@@ -17,7 +17,7 @@
     },
     "furniture": {
       "file": "furniture.png",
-      "rows": [{"group": "bookshelf", "first": 0, "n": 10, "y": 1, "cw": 20, "ch": 35}, {"group": "desk", "first": 0, "n": 6, "y": 37, "cw": 32, "ch": 32}, {"group": "desk_scr_dim", "first": 0, "n": 1, "y": 70, "cw": 4, "ch": 1}, {"group": "desk_scr_plug", "first": 0, "n": 1, "y": 72, "cw": 5, "ch": 5}, {"group": "desk_scr_code", "first": 0, "n": 16, "y": 78, "cw": 14, "ch": 10}, {"group": "desk_scr_code", "first": 16, "n": 16, "y": 89, "cw": 14, "ch": 10}, {"group": "desk_scr_code", "first": 32, "n": 16, "y": 100, "cw": 14, "ch": 10}, {"group": "desk_scr_web", "first": 0, "n": 3, "y": 111, "cw": 14, "ch": 10}, {"group": "desk_scr_saver", "first": 0, "n": 16, "y": 122, "cw": 12, "ch": 8}, {"group": "desk_scr_saver", "first": 16, "n": 8, "y": 131, "cw": 12, "ch": 8}, {"group": "desk_steam", "first": 0, "n": 8, "y": 140, "cw": 2, "ch": 4}, {"group": "desk_drawer", "first": 0, "n": 1, "y": 145, "cw": 8, "ch": 5}, {"group": "desk_nomug", "first": 0, "n": 1, "y": 151, "cw": 5, "ch": 4}, {"group": "desk_lit", "first": 0, "n": 1, "y": 156, "cw": 11, "ch": 1}, {"group": "rack_idle", "first": 0, "n": 5, "y": 158, "cw": 15, "ch": 40}, {"group": "rack_active", "first": 0, "n": 8, "y": 199, "cw": 15, "ch": 40}, {"group": "rack_progress", "first": 0, "n": 16, "y": 240, "cw": 18, "ch": 5}, {"group": "rack_progress", "first": 16, "n": 1, "y": 246, "cw": 18, "ch": 5}, {"group": "bed", "first": 0, "n": 1, "y": 252, "cw": 23, "ch": 41}, {"group": "bed_sleep", "first": 0, "n": 2, "y": 294, "cw": 23, "ch": 41}, {"group": "nightstand", "first": 0, "n": 2, "y": 336, "cw": 9, "ch": 19}, {"group": "plant", "first": 0, "n": 3, "y": 356, "cw": 13, "ch": 17}, {"group": "whiteboard_empty", "first": 0, "n": 1, "y": 374, "cw": 20, "ch": 16}, {"group": "whiteboard_1", "first": 0, "n": 2, "y": 391, "cw": 20, "ch": 16}, {"group": "whiteboard_2", "first": 0, "n": 3, "y": 408, "cw": 20, "ch": 16}, {"group": "whiteboard_3", "first": 0, "n": 4, "y": 425, "cw": 20, "ch": 16}, {"group": "whiteboard_4", "first": 0, "n": 5, "y": 442, "cw": 20, "ch": 16}, {"group": "whiteboard_5", "first": 0, "n": 6, "y": 459, "cw": 20, "ch": 16}, {"group": "paper", "first": 0, "n": 1, "y": 476, "cw": 4, "ch": 3}],
+      "rows": [{"group": "bookshelf", "first": 0, "n": 10, "y": 1, "cw": 20, "ch": 35}, {"group": "desk", "first": 0, "n": 6, "y": 37, "cw": 32, "ch": 32}, {"group": "desk_scr_dim", "first": 0, "n": 1, "y": 70, "cw": 4, "ch": 1}, {"group": "desk_scr_plug", "first": 0, "n": 1, "y": 72, "cw": 5, "ch": 5}, {"group": "desk_scr_code", "first": 0, "n": 16, "y": 78, "cw": 14, "ch": 10}, {"group": "desk_scr_code", "first": 16, "n": 16, "y": 89, "cw": 14, "ch": 10}, {"group": "desk_scr_code", "first": 32, "n": 16, "y": 100, "cw": 14, "ch": 10}, {"group": "desk_scr_web", "first": 0, "n": 3, "y": 111, "cw": 14, "ch": 10}, {"group": "desk_scr_saver", "first": 0, "n": 16, "y": 122, "cw": 12, "ch": 8}, {"group": "desk_scr_saver", "first": 16, "n": 8, "y": 131, "cw": 12, "ch": 8}, {"group": "desk_steam", "first": 0, "n": 8, "y": 140, "cw": 2, "ch": 4}, {"group": "desk_drawer", "first": 0, "n": 1, "y": 145, "cw": 8, "ch": 5}, {"group": "desk_nomug", "first": 0, "n": 1, "y": 151, "cw": 5, "ch": 4}, {"group": "desk_lit", "first": 0, "n": 1, "y": 156, "cw": 11, "ch": 1}, {"group": "rack_idle", "first": 0, "n": 5, "y": 158, "cw": 15, "ch": 40}, {"group": "rack_active", "first": 0, "n": 8, "y": 199, "cw": 15, "ch": 40}, {"group": "rack_progress", "first": 0, "n": 16, "y": 240, "cw": 18, "ch": 5}, {"group": "rack_progress", "first": 16, "n": 1, "y": 246, "cw": 18, "ch": 5}, {"group": "bed", "first": 0, "n": 1, "y": 252, "cw": 23, "ch": 41}, {"group": "bed_sleep", "first": 0, "n": 2, "y": 294, "cw": 23, "ch": 41}, {"group": "nightstand", "first": 0, "n": 2, "y": 336, "cw": 9, "ch": 19}, {"group": "whiteboard_empty", "first": 0, "n": 1, "y": 374, "cw": 20, "ch": 16}, {"group": "whiteboard_1", "first": 0, "n": 2, "y": 391, "cw": 20, "ch": 16}, {"group": "whiteboard_2", "first": 0, "n": 3, "y": 408, "cw": 20, "ch": 16}, {"group": "whiteboard_3", "first": 0, "n": 4, "y": 425, "cw": 20, "ch": 16}, {"group": "whiteboard_4", "first": 0, "n": 5, "y": 442, "cw": 20, "ch": 16}, {"group": "whiteboard_5", "first": 0, "n": 6, "y": 459, "cw": 20, "ch": 16}, {"group": "paper", "first": 0, "n": 1, "y": 476, "cw": 4, "ch": 3}, {"group": "dog_bed", "first": 0, "n": 1, "y": 480, "cw": 20, "ch": 14}],
       "sprites": [
         {"name": "bookshelf_0", "x": 1, "y": 1, "w": 20, "h": 35, "ax": -5, "ay": -6, "group": "bookshelf", "frame": 0, "tags": {"gap": -1}},
         {"name": "bookshelf_1", "x": 22, "y": 1, "w": 20, "h": 35, "ax": -5, "ay": -6, "group": "bookshelf", "frame": 1, "tags": {"gap": 0}},
@@ -158,9 +158,6 @@
         {"name": "bed_sleep_1", "x": 25, "y": 294, "w": 23, "h": 41, "ax": -5, "ay": -57, "group": "bed_sleep", "frame": 1, "tags": {"sleeping": true, "breath": 1}},
         {"name": "nightstand_0", "x": 1, "y": 336, "w": 9, "h": 19, "ax": -29, "ay": -50, "group": "nightstand", "frame": 0, "tags": {"lampOn": false}},
         {"name": "nightstand_1", "x": 11, "y": 336, "w": 9, "h": 19, "ax": -29, "ay": -50, "group": "nightstand", "frame": 1, "tags": {"lampOn": true}},
-        {"name": "plant_0", "x": 1, "y": 356, "w": 13, "h": 17, "ax": -100, "ay": -82, "group": "plant", "frame": 0, "tags": {"sway": -1}},
-        {"name": "plant_1", "x": 15, "y": 356, "w": 12, "h": 17, "ax": -101, "ay": -82, "group": "plant", "frame": 1, "tags": {"sway": 0}},
-        {"name": "plant_2", "x": 29, "y": 356, "w": 11, "h": 17, "ax": -102, "ay": -82, "group": "plant", "frame": 2, "tags": {"sway": 1}},
         {"name": "whiteboard_empty_0", "x": 1, "y": 374, "w": 20, "h": 16, "ax": -55, "ay": -8, "group": "whiteboard_empty", "frame": 0, "tags": {"total": 0, "done": 0}},
         {"name": "whiteboard_1_0", "x": 1, "y": 391, "w": 20, "h": 16, "ax": -55, "ay": -8, "group": "whiteboard_1", "frame": 0, "tags": {"total": 1, "done": 0}},
         {"name": "whiteboard_1_1", "x": 22, "y": 391, "w": 20, "h": 16, "ax": -55, "ay": -8, "group": "whiteboard_1", "frame": 1, "tags": {"total": 1, "done": 1}},
@@ -182,7 +179,8 @@
         {"name": "whiteboard_5_3", "x": 64, "y": 459, "w": 20, "h": 16, "ax": -55, "ay": -8, "group": "whiteboard_5", "frame": 3, "tags": {"total": 5, "done": 3}},
         {"name": "whiteboard_5_4", "x": 85, "y": 459, "w": 20, "h": 16, "ax": -55, "ay": -8, "group": "whiteboard_5", "frame": 4, "tags": {"total": 5, "done": 4}},
         {"name": "whiteboard_5_5", "x": 106, "y": 459, "w": 20, "h": 16, "ax": -55, "ay": -8, "group": "whiteboard_5", "frame": 5, "tags": {"total": 5, "done": 5}},
-        {"name": "paper_0", "x": 1, "y": 476, "w": 4, "h": 3, "ax": 0, "ay": 0, "group": "paper", "frame": 0, "tags": {}}
+        {"name": "paper_0", "x": 1, "y": 476, "w": 4, "h": 3, "ax": 0, "ay": 0, "group": "paper", "frame": 0, "tags": {}},
+        {"name": "dog_bed_0", "x": 1, "y": 480, "w": 20, "h": 14, "ax": -94, "ay": -86, "group": "dog_bed", "frame": 0, "tags": {"for": "moira"}}
       ]
     },
     "window": {
@@ -527,6 +525,36 @@
         {"name": "bird_fly_3", "x": 19, "y": 148, "w": 5, "h": 3, "ax": -6, "ay": 6, "group": "bird_fly", "frame": 3, "tags": {"frame": 11}},
         {"name": "bird_fly_4", "x": 25, "y": 148, "w": 5, "h": 3, "ax": -8, "ay": 8, "group": "bird_fly", "frame": 4, "tags": {"frame": 12}},
         {"name": "bird_fly_5", "x": 31, "y": 148, "w": 5, "h": 3, "ax": -10, "ay": 10, "group": "bird_fly", "frame": 5, "tags": {"frame": 13}}
+      ]
+    },
+    "moira": {
+      "file": "moira.png",
+      "rows": [{"group": "moira_left_walk", "first": 0, "n": 4, "y": 1, "cw": 14, "ch": 11}, {"group": "moira_right_walk", "first": 0, "n": 4, "y": 13, "cw": 14, "ch": 11}, {"group": "moira_front_walk", "first": 0, "n": 4, "y": 25, "cw": 14, "ch": 11}, {"group": "moira_back_walk", "first": 0, "n": 4, "y": 37, "cw": 14, "ch": 11}, {"group": "moira_sit", "first": 0, "n": 4, "y": 49, "cw": 14, "ch": 11}, {"group": "moira_sleep", "first": 0, "n": 2, "y": 61, "cw": 14, "ch": 9}, {"group": "moira_bed_awake", "first": 0, "n": 2, "y": 71, "cw": 14, "ch": 10}],
+      "sprites": [
+        {"name": "moira_left_walk_0", "x": 1, "y": 1, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_left_walk", "frame": 0, "tags": {"view": "left", "legPhase": 0}},
+        {"name": "moira_left_walk_1", "x": 16, "y": 1, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_left_walk", "frame": 1, "tags": {"view": "left", "legPhase": 1}},
+        {"name": "moira_left_walk_2", "x": 31, "y": 1, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_left_walk", "frame": 2, "tags": {"view": "left", "legPhase": 2}},
+        {"name": "moira_left_walk_3", "x": 46, "y": 1, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_left_walk", "frame": 3, "tags": {"view": "left", "legPhase": 3}},
+        {"name": "moira_right_walk_0", "x": 1, "y": 13, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_right_walk", "frame": 0, "tags": {"view": "right", "legPhase": 0}},
+        {"name": "moira_right_walk_1", "x": 16, "y": 13, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_right_walk", "frame": 1, "tags": {"view": "right", "legPhase": 1}},
+        {"name": "moira_right_walk_2", "x": 31, "y": 13, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_right_walk", "frame": 2, "tags": {"view": "right", "legPhase": 2}},
+        {"name": "moira_right_walk_3", "x": 46, "y": 13, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_right_walk", "frame": 3, "tags": {"view": "right", "legPhase": 3}},
+        {"name": "moira_front_walk_0", "x": 1, "y": 25, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_front_walk", "frame": 0, "tags": {"view": "front", "legPhase": 0}},
+        {"name": "moira_front_walk_1", "x": 16, "y": 25, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_front_walk", "frame": 1, "tags": {"view": "front", "legPhase": 1}},
+        {"name": "moira_front_walk_2", "x": 31, "y": 25, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_front_walk", "frame": 2, "tags": {"view": "front", "legPhase": 2}},
+        {"name": "moira_front_walk_3", "x": 46, "y": 25, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_front_walk", "frame": 3, "tags": {"view": "front", "legPhase": 3}},
+        {"name": "moira_back_walk_0", "x": 1, "y": 37, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_back_walk", "frame": 0, "tags": {"view": "back", "legPhase": 0}},
+        {"name": "moira_back_walk_1", "x": 16, "y": 37, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_back_walk", "frame": 1, "tags": {"view": "back", "legPhase": 1}},
+        {"name": "moira_back_walk_2", "x": 31, "y": 37, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_back_walk", "frame": 2, "tags": {"view": "back", "legPhase": 2}},
+        {"name": "moira_back_walk_3", "x": 46, "y": 37, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_back_walk", "frame": 3, "tags": {"view": "back", "legPhase": 3}},
+        {"name": "moira_sit_0", "x": 1, "y": 49, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_sit", "frame": 0, "tags": {"pose": "alert"}},
+        {"name": "moira_sit_1", "x": 16, "y": 49, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_sit", "frame": 1, "tags": {"pose": "wag"}},
+        {"name": "moira_sit_2", "x": 31, "y": 49, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_sit", "frame": 2, "tags": {"pose": "blink"}},
+        {"name": "moira_sit_3", "x": 46, "y": 49, "w": 14, "h": 11, "ax": 7, "ay": 10, "group": "moira_sit", "frame": 3, "tags": {"pose": "happy"}},
+        {"name": "moira_sleep_0", "x": 1, "y": 61, "w": 14, "h": 9, "ax": 7, "ay": 6, "group": "moira_sleep", "frame": 0, "tags": {"pose": "sleep", "breath": 0}},
+        {"name": "moira_sleep_1", "x": 16, "y": 61, "w": 14, "h": 9, "ax": 7, "ay": 6, "group": "moira_sleep", "frame": 1, "tags": {"pose": "sleep", "breath": 1}},
+        {"name": "moira_bed_awake_0", "x": 1, "y": 71, "w": 14, "h": 10, "ax": 7, "ay": 7, "group": "moira_bed_awake", "frame": 0, "tags": {"pose": "bed_awake", "blink": false}},
+        {"name": "moira_bed_awake_1", "x": 16, "y": 71, "w": 14, "h": 10, "ax": 7, "ay": 7, "group": "moira_bed_awake", "frame": 1, "tags": {"pose": "bed_awake", "blink": true}}
       ]
     }
   }

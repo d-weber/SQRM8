@@ -391,3 +391,14 @@ JSON parse of a state ≈ 5.6 ms (≈ 6/s). Flush (copy to PSRAM framebuffer) �
   with 0 underruns and `vs_n10` 319 (a different idle animation: not comparable). Not done: the 4B with the same
   build, so the cost of the runtime branch on the 4B's reversed copy and the meaning of the non-zero `lcd_n10` /
   `vs_n10` on this board are both open.
+
+- **Moira and her dog bed** (2026-11-26, PR #3) — the plant (a sprite in the painter pass, with the floor copied back
+  under it every frame) is replaced by a dog bed baked into the cached background and one 14 x 11 dog sprite with her
+  own state machine in `Director`. Same probe on the sqrm8 board, home demo 30 s, two runs each, `main` (0.8.1) →
+  this build (fps / frame avg/max ms / cpu % / room draw avg µs, min-max / heap_int / lcd_underruns):
+  23.3 / 12.1/60 / 34.9 / 1851, 1126-2530 / 160.2 KB / 0 and 22.8 / 11.8/60 / 33.6 / 1847, 1433-2416 / 160.2 KB / 0 →
+  23.2 / 12.0/60 / 34.3 / 1624, 945-2413 / 160.3 KB / 0 and 22.1 / 12.5/61 / 34.0 / 1627, 1144-2303 / 160.3 KB / 0.
+  The room draw is ~12 % cheaper (the floor copy-back is gone), the rest is run scatter. One 120 s window on the new
+  build: 22.0 fps / 13.4/65 ms / 36.2 % / 1662 µs / 0 underruns over 5078 LCD frames. Image 1 249 527 → 1 252 895 B
+  (+3.4 KB: 24 sprites), static RAM +40 B. On the host, 40 seeds x 4 simulated hours of random inputs under
+  ASan + UBSan: no finding, her position never leaves the open floor, her bed or the two entry legs.

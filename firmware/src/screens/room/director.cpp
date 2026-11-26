@@ -2,6 +2,7 @@
 #include "director.h"
 #include "sprites_gen.h"
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
@@ -24,7 +25,7 @@ static const StationDef ST[ST_COUNT] = {
     {38, {{38, 87}, {10, 87}}, 2, FRONT, 5},  // ST_BED (climb on from the right)
     {32, {{32, 42}, {0, 0}}, 1, BACK, 6},     // ST_WINDOW
     {56, {{56, 42}, {0, 0}}, 1, BACK, 7},     // ST_BOARD
-    {84, {{84, 97}, {0, 0}}, 1, RIGHTV, 8},   // ST_PLANT
+    {78, {{78, 93}, {0, 0}}, 1, RIGHTV, 8},   // ST_DOGBED (beside Moira's bed)
     {49, {{49, 53}, {0, 0}}, 1, RIGHTV, 0},   // ST_UNDERDESK
     {54, {{54, 53}, {0, 0}}, 1, RIGHTV, 0},   // ST_DRAWER
 };
@@ -36,13 +37,13 @@ static const MiniDef MST[] = {
     {60, 60, 42, BACK, 7, -1, -1},    // whiteboard
     {36, 36, 42, BACK, 6, -1, -1},    // window
     {46, 46, 77, FRONT, 3, -1, -1},   // rug
-    {88, 88, 97, RIGHTV, 8, -1, -1},  // by the plant
+    {80, 80, 95, RIGHTV, 8, -1, -1},  // by Moira's bed
     {40, 40, 101, FRONT, 9, -1, -1},  // by the door mat
     {40, 14, 101, FRONT, 10, 40, 101}, // foot of the bed (walks round the bed)
     // overflow spots on the open floor (a crowd of helpers)
     {44, 44, 90, FRONT, 11, -1, -1},  {58, 58, 90, FRONT, 12, -1, -1},  {72, 72, 90, FRONT, 13, -1, -1},
-    {86, 86, 88, FRONT, 14, -1, -1},  {40, 30, 90, FRONT, 15, 40, 90},  {72, 72, 101, FRONT, 16, -1, -1},
-    {86, 86, 101, FRONT, 17, -1, -1}, {40, 28, 101, FRONT, 18, 40, 101}, {96, 96, 70, LEFTV, 19, -1, -1},
+    {82, 82, 86, FRONT, 14, -1, -1},  {40, 30, 90, FRONT, 15, 40, 90},  {72, 72, 101, FRONT, 16, -1, -1},
+    {80, 80, 101, FRONT, 17, -1, -1}, {40, 28, 101, FRONT, 18, 40, 101}, {96, 96, 70, LEFTV, 19, -1, -1},
     {98, 98, 80, LEFTV, 20, -1, -1},  {40, 30, 80, RIGHTV, 21, 40, 80},
 };
 static const int N_MST = 20;
@@ -68,14 +69,14 @@ static const FidDef FID[FID_COUNT] = {
     {"wave", S(1.4f), M(TASK_IDLE) | M(TASK_WAIT), 3},
     {"yawn", S(1.5f), M(TASK_IDLE), 2},
     {"doze", S(1.0f), 0, 0},
-    {"water", S(3.0f), M(TASK_IDLE) | M(TASK_THINK), 3},
+    {"pet", S(3.2f), M(TASK_IDLE) | M(TASK_THINK), 4},
     {"window", S(5.0f), M(TASK_IDLE) | M(TASK_THINK) | M(TASK_READ), 3},
     {"coffee", S(2.0f), M(TASK_READ) | M(TASK_THINK) | M(TASK_IDLE) | M(TASK_RUN) | M(TASK_PLAN), 3},
     {"book", S(3.2f), M(TASK_CODE) | M(TASK_WEB) | M(TASK_DELEGATE) | M(TASK_RUN) | M(TASK_PLAN) | M(TASK_REVIEW), 3},
     {"board", S(3.0f), M(TASK_CODE) | M(TASK_WEB) | M(TASK_RUN) | M(TASK_THINK) | M(TASK_READ) | M(TASK_IDLE), 3},
     {"relocate", S(0.5f), M(TASK_READ) | M(TASK_THINK), 3},
 };
-static bool isErrand(Fidget f) { return f >= ERR_WATER; }
+static bool isErrand(Fidget f) { return f >= ERR_PET; }
 
 // ---------------------------------------------------------------- init / input
 void Director::init(uint32_t seed, float tod) {
@@ -88,7 +89,13 @@ void Director::init(uint32_t seed, float tod) {
   here = {10, 87, ST_BED, 1}; fx = 10; fy = 87; cx = 10; cy = 76;
   nextFid = S(12);
   blinkT = S(3);
-  plantNext = S(10); birdNext = 0; shootNext = 0;
+  birdNext = 0; shootNext = 0;
+  moira = Moira();
+  moira.state = MOIRA_SLEEP;
+  moira.x = 104.f; moira.y = 93.f;
+  moira.spot = 0;
+  moira.timer = S(rng.range(18, 45));
+  moira.blinkT = S(3);
   waitNext = S(5);
   sleepNext = S(20);
   win.moonPhase = 4;
@@ -266,7 +273,7 @@ bool Director::fidgetAllowed(Fidget f) const {
   if (f == ERR_BOOK && station == ST_SHELF) return false;
   if (f == ERR_BOARD && station == ST_BOARD) return false;
   if (f == ERR_WINDOW && station == ST_WINDOW) return false;
-  if (f == ERR_WATER && station == ST_PLANT) return false;
+  if (f == ERR_PET && (station == ST_DOGBED || moira.spot != 0 || moira.state == MOIRA_WALK)) return false;
   if (f == FID_GLANCE && (view == FRONT)) return false;
   if (f == FID_LOOK_AROUND && view != FRONT) return false;
   if (f == FID_WAVE && view != FRONT) return false;
@@ -282,7 +289,7 @@ void Director::startFidget(Fidget f) {
   if (isErrand(f)) {
     Station s = ST_RUG;
     switch (f) {
-      case ERR_WATER: s = ST_PLANT; break;
+      case ERR_PET: s = ST_DOGBED; break;
       case ERR_WINDOW: s = ST_WINDOW; break;
       case ERR_COFFEE: s = ST_DESK; break;
       case ERR_BOOK: s = ST_SHELF; break;
@@ -477,6 +484,131 @@ void Director::stepMinis() {
   for (int i = 0; i < MAX_MINIS; i++) if (minis[i].state) shownHelpers++;
 }
 
+// ---------------------------------------------------------------- Moira (Coton de Tulear)
+// Curated floor spots: 0 is her dog bed (entered via (88, 93)); 8 is by the foot of M8's bed (entered via
+// (44, 94)). Spots 1..7 and both entries lie inside the obstacle-free open floor/rug rect x: 44..90, y: 53..97,
+// so any Manhattan leg between them stays clear of all furniture.
+static const int8_t MOIRA_SPOTS[][2] = {
+    {104, 93},  // 0: dog bed (bottom-right corner)
+    {60, 70},   // 1: rug center
+    {48, 66},   // 2: left rug
+    {72, 74},   // 3: right rug
+    {58, 95},   // 4: by the door
+    {86, 58},   // 5: near M8's desk
+    {44, 53},   // 6: under the window sun patch
+    {88, 78},   // 7: right open floor
+    {38, 94},   // 8: foot of M8's bed
+};
+static const int N_MOIRA_SPOTS = sizeof(MOIRA_SPOTS) / sizeof(MOIRA_SPOTS[0]);
+
+void Director::planMoiraPath(int tgt) {
+  moira.pathN = 0; moira.pathI = 0;
+  int lx = (int)(moira.x + 0.5f), ly = (int)(moira.y + 0.5f);
+  auto add = [&](int x, int y) {
+    if (x == lx && y == ly) return;
+    if (moira.pathN < 6) { moira.path[moira.pathN][0] = (int8_t)x; moira.path[moira.pathN][1] = (int8_t)y; moira.pathN++; lx = x; ly = y; }
+  };
+  if (lx > 90) add(88, 93);       // hop out of dog bed first
+  else if (lx < 44) add(44, 94);  // step clear of nightstand first
+  int tx = MOIRA_SPOTS[tgt][0], ty = MOIRA_SPOTS[tgt][1];
+  int ex = tgt == 0 ? 88 : tgt == 8 ? 44 : tx;
+  int ey = tgt == 0 ? 93 : tgt == 8 ? 94 : ty;
+  if (lx != ex && ly != ey) {
+    if (rng.chance(50)) add(ex, ly);
+    else add(lx, ey);
+  }
+  add(ex, ey);
+  add(tx, ty);
+  moira.spot = (int8_t)tgt;
+  moira.state = MOIRA_WALK;
+}
+
+void Director::stepMoira() {
+  if (--moira.blinkT <= 0) { moira.blinkLen = 2; moira.blinkT = S(rng.range(2, 6)); }
+  if (moira.blinkLen > 0) moira.blinkLen--;
+
+  // She stays in her bed from the moment M8 sets off to pet her (errPhase 0 is his walk there), or he would
+  // arrive at an empty bed; she only wakes up once he is beside her.
+  bool petComing = (fid == ERR_PET && errPhase <= 1 && moira.spot == 0 && moira.state != MOIRA_WALK);
+  bool beingPetted = petComing && errPhase == 1;
+  moira.petted = beingPetted;
+  if (petComing) {
+    if (beingPetted && moira.state == MOIRA_SLEEP) moira.state = MOIRA_BED_AWAKE;
+    if (moira.timer < S(2)) moira.timer = S(2);
+    return;
+  }
+
+  bool quiet = (task == TASK_SLEEP || task == TASK_OFFLINE);
+  if (quiet && moira.spot != 0) {
+    moira.stopsLeft = 0;
+    planMoiraPath(0);
+  }
+
+  auto pickRoamSpot = [&](int cur) {
+    int best = 1;
+    for (int tries = 0; tries < 8; tries++) {
+      int s = rng.range(1, N_MOIRA_SPOTS - 1);
+      if (s == cur) continue;
+      best = s;
+      if (iabs(MOIRA_SPOTS[s][0] - (int)fx) + iabs(MOIRA_SPOTS[s][1] - (int)fy) > 14) return s;
+    }
+    return best;
+  };
+
+  switch (moira.state) {
+    case MOIRA_SLEEP:
+      if (!quiet && --moira.timer <= 0) {
+        moira.state = MOIRA_BED_AWAKE;
+        moira.stopsLeft = (int8_t)rng.range(1, 3);
+        moira.timer = S(rng.range(2, 4));
+      }
+      break;
+    case MOIRA_BED_AWAKE:
+      if (--moira.timer <= 0) {
+        if (quiet || moira.stopsLeft <= 0) {
+          bool late = (in.tod < 6.5f || in.tod >= 21.5f);
+          moira.state = MOIRA_SLEEP;
+          moira.timer = S(rng.range(late ? 60 : 30, late ? 140 : 90));
+        } else {
+          planMoiraPath(pickRoamSpot(0));
+        }
+      }
+      break;
+    case MOIRA_WALK: {
+      if (moira.pathI >= moira.pathN) {
+        moira.legPhase = 0;
+        if (moira.spot == 0) {
+          moira.state = MOIRA_BED_AWAKE;
+          moira.stopsLeft = 0;
+          moira.timer = S(rng.range(2, 4));
+          moira.view = FRONT;
+        } else {
+          moira.state = MOIRA_SIT;
+          moira.view = FRONT;
+          moira.timer = S(rng.range(4, 12));
+        }
+        break;
+      }
+      float tx = moira.path[moira.pathI][0], ty = moira.path[moira.pathI][1];
+      float dx = tx - moira.x, dy = ty - moira.y, d = sqrtf(dx * dx + dy * dy);
+      const float spd = 0.95f;
+      if (d <= spd) { moira.x = tx; moira.y = ty; moira.pathI++; }
+      else {
+        moira.x += dx / d * spd; moira.y += dy / d * spd;
+        moira.view = fabsf(dx) > fabsf(dy) ? (dx > 0 ? RIGHTV : LEFTV) : (dy > 0 ? FRONT : BACK);
+      }
+      if (++moira.legT >= 2) { moira.legT = 0; moira.legPhase = (moira.legPhase + 1) & 3; }
+      break;
+    }
+    case MOIRA_SIT:
+      if (--moira.timer <= 0) {
+        if (quiet || --moira.stopsLeft <= 0) planMoiraPath(0);
+        else planMoiraPath(pickRoamSpot(moira.spot));
+      }
+      break;
+  }
+}
+
 // ---------------------------------------------------------------- ambient
 void Director::stepAmbient() {
   float tod = in.tod;
@@ -501,9 +633,6 @@ void Director::stepAmbient() {
   // shooting star
   if (win.shootingStar) { if (++win.shootT > 6) win.shootingStar = false; }
   else if (night && rng.range(0, 8600) == 0) { win.shootingStar = true; win.shootT = 0; }
-  // plant
-  if (plantT > 0) { plantT--; plantSway = (plantT / 2) % 2 ? 1 : -1; if (plantT == 0) plantSway = 0; }
-  else if (--plantNext <= 0) { plantT = 8; plantNext = S(rng.range(8, 25)); }
   // lamp & monitor
   bool awake = task != TASK_SLEEP && task != TASK_OFFLINE;
   lampOn = awake && (tod < 7.5f || tod >= 18.f || rain);
@@ -586,6 +715,7 @@ void Director::step() {
   stepFidgets();
   stepTaskLoop();
   stepMinis();
+  stepMoira();
   stepAmbient();
   stepLighting();
   // smooth the light toward its target; rebuild the palette only when it moved
@@ -661,7 +791,7 @@ void Director::composePose(M8Pose &p, int &emote, int &jump, int &shake) const {
     if (isErrand(fid)) {
       if (errPhase == 1) {
         switch (fid) {
-          case ERR_WATER: p.view = RIGHTV; p.arms = ARMS_UP_R; break;
+          case ERR_PET: p.view = RIGHTV; p.arms = ((t / 4) & 1) ? ARMS_UP_R : ARMS_DOWN; emote = ICO_HEART; break;
           case ERR_WINDOW: p.view = BACK; p.arms = ARMS_DOWN; break;
           case ERR_COFFEE: p.view = FRONT; p.arms = ARMS_UP_R; break;
           case ERR_BOOK: p.view = FRONT; p.arms = ARMS_HOLD; emote = -1; break;
@@ -718,6 +848,7 @@ const Sprite *const *const BOARD[5] = {spr::whiteboard_1, spr::whiteboard_2, spr
 const Sprite *const *const CWALK[4] = {spr::m8_front_walk, spr::m8_back_walk, spr::m8_left_walk, spr::m8_right_walk};
 const Sprite *const *const CARMS[4] = {spr::m8_front_arms, spr::m8_back_arms, spr::m8_left_arms, spr::m8_right_arms};
 const Sprite *const *const MWALK[4] = {spr::mini_front_walk, spr::mini_back_walk, spr::mini_left_walk, spr::mini_right_walk};
+const Sprite *const *const DOGWALK[4] = {spr::moira_front_walk, spr::moira_back_walk, spr::moira_left_walk, spr::moira_right_walk};
 // m8_expr frames (firmware/assets/sprites/atlas.json, same order): arms, eyes (SLEEP folded into BLINK), mouth, legPhase, blush
 struct Expr { int8_t a, e, m, leg; bool blush; };
 const Expr EXPR[] = {
@@ -799,7 +930,7 @@ void copyRect(Canvas &c, const Sprite &s, int x0, int y0, int x1, int y1) { c.bl
 }  // namespace
 
 void Director::draw(Canvas &c) {
-  // walls, floor, rug, furniture at rest (screen dim, day window at cloudX 0, empty board, idle rack), plant sway 0
+  // walls, floor, rug, furniture at rest (screen dim, day window at cloudX 0, empty board, idle rack, dog bed)
   if (!bgCache) {
     bgCache = (Idx *)malloc(W * H);
     Canvas bg{bgCache};
@@ -807,8 +938,6 @@ void Director::draw(Canvas &c) {
     bg.blit(0, 0, spr::background_0);
   }
   memcpy(c.buf, bgCache, W * H);
-  // the plant is part of the painter pass below (it can stand in front of / behind M8): floor back under it
-  copyRect(c, spr::floor_0, 100, 82, 113, 98);
   // lighting reads the floor; furniture has no floor colours, so it may run first
   float tod = in.tod;
   bool night = win.mode == SKY_NIGHT;
@@ -912,7 +1041,6 @@ void Director::drawM8Now(Canvas &c) {
   c.blit(p.x, p.y, *s, false, remap);
   if (p.arms == ARMS_HOLD) c.blit(p.x + 2, p.y + 6, *spr::book[page % spr::book_n]);
   if (fid == FID_SIP || (fid == ERR_COFFEE && errPhase == 1)) c.blit(p.x + 15, p.y - 2, *spr::mug_held[0]);
-  if (fid == ERR_WATER && errPhase == 1) c.blit(p.x + 16, p.y + 3, *spr::can_pour[tick % spr::can_pour_n]);
   if (task == TASK_SEARCH && station == ST_UNDERDESK && !walking) c.blit(p.x + 17, p.y + 2, *spr::torch[0]);
   if (task == TASK_WAIT) {
     int lift = (tick / 6) % 2;
@@ -941,15 +1069,40 @@ void Director::drawM8Now(Canvas &c) {
   if (reactId == REACT_WINCE) c.blit(p.x + 17, p.y - 3, *spr::sweat[0]);
 }
 
+void Director::drawMoiraNow(Canvas &c) {
+  int mx = (int)(moira.x + 0.5f), my = (int)(moira.y + 0.5f);
+  bool inDogBed = (moira.spot == 0 && moira.state != MOIRA_WALK);
+  if (!inDogBed) c.darken(mx - 4, mx + 4, my + 1);
+  const Sprite *s = nullptr;
+  bool excited = moira.petted || reactId == REACT_HAPPY || reactId == REACT_GIGGLE;
+  switch (moira.state) {
+    case MOIRA_SLEEP:
+      s = spr::moira_sleep[(tick / 18) & 1];
+      break;
+    case MOIRA_BED_AWAKE:
+      s = spr::moira_bed_awake[moira.blinkLen > 0 ? 1 : 0];
+      break;
+    case MOIRA_WALK:
+      s = DOGWALK[moira.view & 3][moira.legPhase & 3];
+      break;
+    case MOIRA_SIT: {
+      int f = excited ? 3 : (moira.blinkLen > 0 ? 2 : (int)((tick / 7) & 1));
+      s = spr::moira_sit[f];
+      break;
+    }
+  }
+  if (s) c.blit(mx, my, *s);
+}
+
 void Director::drawSprites(Canvas &c) {
-  // painter's order by feet y: minis, M8, the plant
+  // painter's order by feet y: minis, M8, Moira
   struct D { int key, kind, idx; } d[MAX_MINIS + 2]; int n = 0;
   for (int i = 0; i < MAX_MINIS; i++) if (minis[i].state) d[n++] = {(int)minis[i].y, 1, i};
   if (!inBed) d[n++] = {cy + 11, 0, 0};
-  d[n++] = {97, 2, 0};
+  d[n++] = {(int)(moira.y + 0.5f), 2, 0};
   for (int i = 1; i < n; i++) { D t = d[i]; int j = i - 1; while (j >= 0 && d[j].key > t.key) { d[j + 1] = d[j]; j--; } d[j + 1] = t; }
   for (int i = 0; i < n; i++) {
-    if (d[i].kind == 2) c.blit(0, 0, *spr::plant[imin(imax(plantSway, -1), 1) + 1]);
+    if (d[i].kind == 2) drawMoiraNow(c);
     else if (d[i].kind == 0) drawM8Now(c);
     else {
       const Mini &m = minis[d[i].idx];
@@ -975,7 +1128,7 @@ void Director::drawFx(Canvas &c) {
 const char *Director::activity() const {
   static char buf[32];
   if (reactId >= 0) { static const char *R[] = {"glance", "hop", "surprise", "wink", "giggle", "happy", "wince"}; snprintf(buf, sizeof buf, "react:%s", R[reactId]); return buf; }
-  if (walking) { static const char *SN[] = {"desk", "shelf", "rack", "rug", "door", "bed", "window", "board", "plant", "underdesk", "drawer"}; snprintf(buf, sizeof buf, "walk>%s", SN[station]); return buf; }
+  if (walking) { static const char *SN[] = {"desk", "shelf", "rack", "rug", "door", "bed", "window", "board", "dogbed", "underdesk", "drawer"}; snprintf(buf, sizeof buf, "walk>%s", SN[station]); return buf; }
   if (fid != FID_NONE) { snprintf(buf, sizeof buf, "%s:%s", isErrand(fid) ? "errand" : "fidget", FID[fid].name); return buf; }
   return TASK_NAMES[task];
 }

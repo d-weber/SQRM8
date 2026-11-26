@@ -83,15 +83,16 @@ the overlays. Base for `desk_*` overlays: `desk_0` (screen off, t 0, drawer shut
 `rack_progress`: any `rack_idle`/`rack_active` frame (the bar sits above the rack). When you edit a base, check
 that its overlays still fit it.
 
-## Sheets (484 sprites)
+## Sheets (506 sprites)
 
 | Sheet | Size | Groups (frames) |
 |---|---|---|
 | room | 243x422 | `walls` 1, `floor` 1, `rug` 1, `background` 1, `alarm_ring` 2 (phase 0/1) |
-| furniture | 305x480 | `bookshelf` 10 (gap -1, 0..8), `desk` 6 (one per ScreenMode), overlays `desk_scr_dim` 1, `desk_scr_plug` 1, `desk_scr_code` 48 (t 0..47), `desk_scr_web` 3 (t 0/8/16), `desk_scr_saver` 24 (t 0..23), `desk_steam` 8, `desk_drawer` 1, `desk_nomug` 1, `desk_lit` 1; `rack_idle` 5 (t 0/24/../96), `rack_active` 8 (seed 1, t 0/2/../14), overlay `rack_progress` 17 (0..16); `bed` 1, `bed_sleep` 2 (breath), `nightstand` 2 (lamp off/on), `plant` 3 (sway -1/0/1), `whiteboard_empty` 1, `whiteboard_1`..`_5` (done 0..total), `paper` 1 |
+| furniture | 305x496 | `bookshelf` 10 (gap -1, 0..8), `desk` 6 (one per ScreenMode), overlays `desk_scr_dim` 1, `desk_scr_plug` 1, `desk_scr_code` 48 (t 0..47), `desk_scr_web` 3 (t 0/8/16), `desk_scr_saver` 24 (t 0..23), `desk_steam` 8, `desk_drawer` 1, `desk_nomug` 1, `desk_lit` 1; `rack_idle` 5 (t 0/24/../96), `rack_active` 8 (seed 1, t 0/2/../14), overlay `rack_progress` 17 (0..16); `bed` 1, `bed_sleep` 2 (breath), `nightstand` 2 (lamp off/on), `dog_bed` 1, `whiteboard_empty` 1, `whiteboard_1`..`_5` (done 0..total), `paper` 1 |
 | window | 465x376 | `window_day` 22 (cloudX 0..21), `window_rain` 40 (rainT 0..39), `window_night_m0`..`m7` 5 each (twinkle: starT 0/7/14/21/28), `window_shoot` 7 (shootT 0..6, moon 4, starT 0), `window_bird` 8 (bird 0, 1, 8..13, day cloudX 0) |
 | m8 | 305x217 | `m8_{front,back,left,right}_walk` 4 (legPhase 0..3), `m8_{front,back,left,right}_arms` 10 (Arms enum order), `m8_eyes` 10 (Eyes enum order), `m8_mouth` 4, `m8_side_blink` 2 (left, right), `m8_tint` 3 (coral, grey, violet), `m8_expr` 18 (the director's face combinations: wait, wait_look_l/r, wait_wave_a/b, wait_tap, wink, giggle, happy, wince, stretch, yawn, yawn_up, wave_a/b, sip, doze, doze_swing; see `tags.expr`), `m8_bed` 6 + `m8_bed_grey` 6 (shift -1/0/1 x eyes closed/open) |
 | minis | 61x61 | `mini_{front,back,left,right}_walk` 4, `mini_front_blink` 2 (legPhase 0/1), `mini_tint` 3 |
+| moira | 61x82 | `moira_{left,right,front,back}_walk` 4 (legPhase 0..3), `moira_sit` 4 (alert/wag/blink/happy), `moira_sleep` 2 (breath 0/1), `moira_bed_awake` 2 (open/blink) |
 | props | 91x33 | `book` 6 (page 0..5: pages vary on page%2 and page%3), `can` 1, `can_pour` 5 (t 0..4), `torch` 1, `mug_held` 1 |
 | fx | 225x152 | `emote_l` 16 + `emote_r` 16 (Icon enum order, tail left/right, in the colour the director uses), `quest_bang` 2 (lift 0/1), `thought` 4 (dots 0..3), `zzz` 3 (t 0/6/12), `sparkle` 1 (QW), `sparkle_big` 3 (QY, QW, SCR), `sweat` 1, `dash` 3 (t 0/4/8), `bird_sit` 2 (frame 0/1), `bird_fly` 6 (frame 8..13) |
 

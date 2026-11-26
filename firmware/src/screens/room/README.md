@@ -23,8 +23,9 @@ so every behaviour can be previewed on the host as PNG sheets / GIFs before flas
 **Art (the sheets in `firmware/assets/sprites/`, the source of truth; edit them in indexed mode with
 `palette.gpl`, see `tools/sprites/FORMAT.md`):** walls, floor, rug, every piece of furniture and its states
 (desk screens, steam, drawer, rack LEDs and progress bar, bookshelf gaps, whiteboard, bed, nightstand lamp,
-plant sway), the window (day / rain / night per moon phase and twinkle, shooting star, bird on the sill), M8
-(walk cycles, arm poses, eyes, mouths, face combinations, tints, in bed), the mini helpers, the props (book, can,
+dog bed), the window (day / rain / night per moon phase and twinkle, shooting star, bird on the sill), M8
+(walk cycles, arm poses, eyes, mouths, face combinations, tints, in bed), the mini helpers, Moira the Coton de
+Tuléar (walk cycles, sitting, awake and sleeping in her dog bed), the props (book, can,
 torch, mug, paper) and the FX (emotes, quest "!", thought bubble, zzz, sparkles, sweat, dash, alarm ring). Their
 colours are palette indices, so the art is lit like the rest of the room.
 

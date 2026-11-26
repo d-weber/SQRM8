@@ -4,7 +4,7 @@
 // Inputs are the aggregate agent mood + the current tool, the helper count, the plan progress and the local time
 // of day. From those it derives a *task* (code at the desk, read at the shelf, run the rack, think on the rug,
 // wait at the door, sleep in bed...), walks M8 there along the room's waypoints, plays the task's base loop
-// and sprinkles in fidgets (stretch, sip, glance, look around...) and errands (water the plant, check the
+// and sprinkles in fidgets (stretch, sip, glance, look around...) and errands (pet Moira, check the
 // whiteboard, grab a book, gaze out of the window) at random, non-repeating intervals. The room itself lives on
 // its own clock: the sky, sun patch and lamp follow the real time of day, clouds drift, it sometimes rains, a bird
 // lands on the sill, stars twinkle, the server rack blinks, the monitor goes to its screensaver when nobody uses it.
@@ -27,11 +27,11 @@ struct Input {
 
 enum Task { TASK_CODE, TASK_WEB, TASK_REVIEW, TASK_READ, TASK_RUN, TASK_SEARCH, TASK_THINK, TASK_DELEGATE, TASK_PLAN,
             TASK_IDLE, TASK_WAIT, TASK_SLEEP, TASK_OFFLINE, TASK_COUNT };
-enum Station { ST_DESK, ST_SHELF, ST_RACK, ST_RUG, ST_DOOR, ST_BED, ST_WINDOW, ST_BOARD, ST_PLANT, ST_UNDERDESK, ST_DRAWER,
+enum Station { ST_DESK, ST_SHELF, ST_RACK, ST_RUG, ST_DOOR, ST_BED, ST_WINDOW, ST_BOARD, ST_DOGBED, ST_UNDERDESK, ST_DRAWER,
                ST_COUNT };
 enum Fidget { FID_NONE = -1, FID_GLANCE = 0, FID_STRETCH, FID_SCRATCH, FID_SIP, FID_LOOK_AROUND, FID_PAUSE, FID_NOD, FID_HOP,
               FID_TAP_FOOT, FID_SHRUG, FID_SPIN, FID_WAVE, FID_YAWN, FID_DOZE,
-              ERR_WATER, ERR_WINDOW, ERR_COFFEE, ERR_BOOK, ERR_BOARD, ERR_RELOCATE,
+              ERR_PET, ERR_WINDOW, ERR_COFFEE, ERR_BOOK, ERR_BOARD, ERR_RELOCATE,
               FID_COUNT };
 
 struct Director {
@@ -45,7 +45,7 @@ struct Director {
   int headX() const { return cx + 9; }  // logical coords of M8's head (speech bubble anchor)
   int headY() const { return inBed ? 64 : cy; }
   bool m8Visible() const { return !inBed; }
-  const char *activity() const;         // "code", "walk>desk", "fidget:sip", "errand:water", "react:happy", ...
+  const char *activity() const;         // "code", "walk>desk", "fidget:sip", "errand:pet", "react:happy", ...
   // Debug: force a task by name ("" releases): code web review read run search think delegate plan idle wait sleep offline
   bool force(const char *name);
   const char *forcedName() const { return forced ? TASK_NAMES[task] : ""; }
@@ -99,12 +99,27 @@ struct Director {
   struct Mini { int state = 0; /*0 off 1 enter 2 at 3 leave*/ int st = -1; float x = 56, y = 98; int path[6][2]; int pathN = 0, pathI = 0; int legPhase = 0; View view = FRONT; int blink = 0; };
   Mini minis[MAX_MINIS];
   int shownHelpers = 0;
+  // Moira (Coton de Tulear)
+  enum MoiraState { MOIRA_SLEEP, MOIRA_BED_AWAKE, MOIRA_WALK, MOIRA_SIT };
+  struct Moira {
+    MoiraState state = MOIRA_SLEEP;
+    float x = 104.f, y = 93.f;
+    int8_t path[6][2];
+    int8_t pathN = 0, pathI = 0;
+    int8_t spot = 0;                    // 0 = dog bed, 1..8 = floor/rug roam spots
+    int8_t stopsLeft = 0;
+    View view = FRONT;
+    int8_t legPhase = 0, legT = 0;
+    int timer = 0;
+    int blinkT = 0, blinkLen = 0;
+    bool petted = false;
+  };
+  Moira moira;
   // room
   WindowState win;
   DeskState desk;
   int steam = 0;
   int saverT = 0;
-  int plantSway = 0, plantT = 0, plantNext = 0;
   int shelfGap = -1;
   bool rain = false; int rainLeft = 0;
   int birdNext = 0, birdT = 0;
@@ -136,10 +151,13 @@ struct Director {
   void startFidget(Fidget f);
   bool fidgetAllowed(Fidget f) const;
   void stepMinis();
+  void stepMoira();
+  void planMoiraPath(int tgt);
   void stepAmbient();
   void stepLighting();
   void drawSprites(Canvas &c);
   void drawM8Now(Canvas &c);
+  void drawMoiraNow(Canvas &c);
   void drawFx(Canvas &c);
   void composePose(M8Pose &p, int &emote, int &jump, int &shake) const;
   bool atDesk() const { return station == ST_DESK && !walking; }

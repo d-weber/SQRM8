@@ -29,8 +29,8 @@ static const char *const QUIPS[] = {
     "Nice code. Truly.",
     "Grab a coffee, I've got this.",
     "Tap me again, I like it.",
-    "The plant says hi.",
-    "I watered the plant. You're welcome.",
+    "Moira says woof.",
+    "Moira is a very good girl.",
 };
 static const int N_QUIPS = sizeof(QUIPS) / sizeof(QUIPS[0]);
 
