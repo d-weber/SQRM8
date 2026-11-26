@@ -97,6 +97,40 @@ def claude_config_dir() -> str:
 claude_dir = claude_config_dir
 
 
+def gemini_config_dir() -> str:
+    """Antigravity global customization dir ($GEMINI_CONFIG_DIR or ~/.gemini/config), where hooks.json lives."""
+    return os.environ.get("GEMINI_CONFIG_DIR") or os.path.join(home(), ".gemini", "config")
+
+
+def antigravity_dirs() -> list[tuple[str, str]]:
+    """(surface, dir) pairs for Antigravity app data, CLI first (agy), then Antigravity 2.0 App and IDE."""
+    base = os.path.join(home(), ".gemini")
+    return [
+        ("cli", os.environ.get("ANTIGRAVITY_CLI_DIR") or os.path.join(base, "antigravity-cli")),
+        ("app", os.environ.get("ANTIGRAVITY_APP_DIR") or os.path.join(base, "antigravity")),
+        ("ide", os.environ.get("ANTIGRAVITY_IDE_DIR") or os.path.join(base, "antigravity-ide")),
+    ]
+
+
+def opencode_data_dir() -> str:
+    """OpenCode data dir ($OPENCODE_DATA, $XDG_DATA_HOME/opencode, %LOCALAPPDATA%\\opencode, or ~/.local/share/opencode)."""
+    if os.environ.get("OPENCODE_DATA"):
+        return os.environ["OPENCODE_DATA"]
+    if IS_WINDOWS:
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(home(), "AppData", "Local")
+        return os.path.join(base, "opencode")
+    base = os.environ.get("XDG_DATA_HOME") or os.path.join(home(), ".local", "share")
+    return os.path.join(base, "opencode")
+
+
+def enabled_agents() -> set[str] | None:
+    """Optional `agents` list in settings.json; None means auto (run all available agent providers simultaneously)."""
+    val = settings_get("agents")
+    if isinstance(val, list):
+        return {str(x).strip().lower() for x in val if str(x).strip()}
+    return None
+
+
 def settings_path() -> str:
     """The app's own settings (board choice, auto flash, first_run_done...), not Claude Code's."""
     return os.path.join(state_dir(), "settings.json")

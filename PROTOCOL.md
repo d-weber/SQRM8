@@ -157,6 +157,10 @@ Unknown actions are logged and ignored.
 ### Session extras
 `waiting` (why it waits, e.g. "Allow Bash: git push?"), `kind` (interactive / headless), `branch`, `perm_mode`;
 subagents also carry `cost`, `model`, `ctx_pct`. Event `tool_error` carries `error`. `totals.offline`.
+`source`: the coding agent the session belongs to (`claude`, `antigravity`); sent for every session, read by no
+firmware so far (tool and model names are normalized to Claude Code's on the host, see `docs/AGENTS.md`).
+`usage.by_model` may carry other families than the three above (`mythos`, `gemini`, `openai`, `other`): the
+firmware folds the keys it does not know into "other".
 
 ### `state.usage` extras (doc: top of host/companion/providers/usage.py)
 `daily_cost[14]` USD/day; `today {tokens,in,out,cache_read,cache_write,cost,msgs,cache_pct,saved}`; `week {tokens,cost}`;

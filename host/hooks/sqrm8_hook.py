@@ -21,5 +21,11 @@ if __name__ == "__main__":
             sys.stdin.buffer.read()
         except BaseException:
             pass
+        if "antigravity" in sys.argv[1:] or "--agent=antigravity" in sys.argv[1:]:
+            try:
+                sys.stdout.write("{}\n")
+                sys.stdout.flush()
+            except BaseException:
+                pass
         os._exit(0)
     run_hook(sys.argv[1:])

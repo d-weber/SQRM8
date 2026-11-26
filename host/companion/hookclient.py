@@ -42,8 +42,10 @@ import time
 MAXDGRAM = 2000
 IS_WINDOWS = sys.platform == "win32"
 
-INPUT_KEYS = ("command", "description", "file_path", "path", "pattern", "url", "query", "prompt",
+INPUT_KEYS = ("command", "description", "file_path", "filePath", "path", "pattern", "url", "query", "prompt",
               "subagent_type", "skill", "notebook_path", "glob", "questions", "plan", "content")
+AGY_INPUT_KEYS = ("CommandLine", "toolSummary", "Path", "TargetFile", "Query", "Url", "Role", "Prompt",
+                  "Pattern", "DirectoryPath", "SearchPath", "steps", "questions")
 
 
 def home():
@@ -136,11 +138,107 @@ def cut(v, n):
     return v if len(v) <= n else v[:n]
 
 
-def compact(p, event="", key=""):
-    """Hook JSON -> datagram bytes (<= MAXDGRAM), or None if it can't be made to fit."""
+def _parse_hook_argv(argv):
+    """Parse optional `--agent <name>` and optional positional event fallback from hook argv."""
+    agent = ""
+    event = ""
+    args = list(argv or [])
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--agent" and i + 1 < len(args):
+            agent = str(args[i + 1]).strip().lower()
+            i += 2
+            continue
+        if a.startswith("--agent="):
+            agent = a.split("=", 1)[1].strip().lower()
+            i += 1
+            continue
+        if not a.startswith("-") and not event:
+            event = a
+        i += 1
+    return agent, event
+
+
+def _compact_inputs(ti, keys=INPUT_KEYS):
+    if not isinstance(ti, dict):
+        return None
+    inp = {}
+    for k in keys:
+        v = ti.get(k)
+        if v is None:
+            continue
+        if k == "questions" and isinstance(v, list) and v:
+            q = v[0] if isinstance(v[0], dict) else {}
+            v = q.get("question") or q.get("header") or ""
+        elif k == "steps" and isinstance(v, list):
+            cur = next((s for s in v if isinstance(s, dict) and s.get("status") == "in_progress"), None)
+            v = (cur.get("title") or "") if cur else f"{len(v)} steps"
+        elif not isinstance(v, str):
+            continue
+        inp[k] = cut(v, 160)
+    return inp or None
+
+
+def _shrink_and_encode(r):
     import json
+    data = json.dumps(r, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "replace")
+    for k in ("inp", "last", "prompt", "msg", "err", "cwd", "title"):
+        if len(data) <= MAXDGRAM:
+            break
+        if k in r:
+            if k == "inp":
+                r["inp"] = {ik: cut(iv, 60) for ik, iv in r["inp"].items()}
+            else:
+                r[k] = cut(r[k], 60)
+            data = json.dumps(r, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "replace")
+    while len(data) > MAXDGRAM and isinstance(r.get("inp"), dict) and r["inp"]:
+        r["inp"].pop(next(reversed(r["inp"])))
+        if not r["inp"]:
+            del r["inp"]
+        data = json.dumps(r, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "replace")
+    return data if len(data) <= MAXDGRAM else None
+
+
+def compact_antigravity(p, event="", key=""):
+    """Antigravity camelCase hook JSON -> SQRM8 datagram bytes (<= MAXDGRAM)."""
+    ev = p.get("hookEventName") or event
+    sid = p.get("conversationId") or p.get("session_id")
+    r = {"v": 1, "sa": "antigravity", "e": ev, "ts": round(time.time(), 3), "sid": sid}
+    if key:
+        r["k"] = key
+    cwd = p.get("cwd")
+    if not cwd:
+        wps = p.get("workspacePaths")
+        if isinstance(wps, list) and wps and isinstance(wps[0], str):
+            cwd = wps[0]
+    if cwd:
+        r["cwd"] = cut(cwd, 300)
+    for src, dst, n in (("modelName", "model", 60), ("lastUserInput", "prompt", 240),
+                        ("error", "err", 200), ("terminationReason", "why", 60)):
+        v = p.get(src)
+        if v is not None and v != "":
+            r[dst] = cut(v, n) if not isinstance(v, (bool, int, float)) else v
+    tc = p.get("toolCall")
+    if isinstance(tc, dict):
+        if tc.get("name"):
+            r["tool"] = cut(tc["name"], 80)
+        if tc.get("id"):
+            r["tid"] = cut(tc["id"], 80)
+        inp = _compact_inputs(tc.get("args"), AGY_INPUT_KEYS + INPUT_KEYS)
+        if inp:
+            r["inp"] = inp
+    return _shrink_and_encode(r)
+
+
+def compact(p, event="", key="", agent=""):
+    """Hook JSON -> datagram bytes (<= MAXDGRAM), or None if it can't be made to fit."""
+    if agent == "antigravity" or (not agent and ("conversationId" in p or "hookEventName" in p)):
+        return compact_antigravity(p, event, key)
     ev = p.get("hook_event_name") or event
-    r = {"v": 1, "e": ev, "ts": round(time.time(), 3), "sid": p.get("session_id")}
+    r = {"v": 1, "e": ev, "ts": round(time.time(), 3), "sid": p.get("session_id") or p.get("sessionID")}
+    if agent and agent != "claude":
+        r["sa"] = agent
     if key:
         r["k"] = key
     for src, dst, n in (("cwd", "cwd", 300), ("agent_id", "aid", 40), ("agent_type", "at", 60),
@@ -154,33 +252,10 @@ def compact(p, event="", key=""):
             r[dst] = cut(v, n) if not isinstance(v, (bool, int, float)) else v
     if p.get("is_interrupt"):
         r["intr"] = True
-    ti = p.get("tool_input")
-    if isinstance(ti, dict):
-        inp = {}
-        for k in INPUT_KEYS:
-            v = ti.get(k)
-            if v is None:
-                continue
-            if k == "questions" and isinstance(v, list) and v:
-                q = v[0] if isinstance(v[0], dict) else {}
-                v = q.get("question") or q.get("header") or ""
-            elif not isinstance(v, str):
-                continue
-            inp[k] = cut(v, 160)
-        if inp:
-            r["inp"] = inp
-    data = json.dumps(r, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "replace")
-    # shrink until it fits in one datagram
-    for k in ("inp", "last", "prompt", "msg", "err", "cwd", "title"):
-        if len(data) <= MAXDGRAM:
-            break
-        if k in r:
-            if k == "inp":
-                r["inp"] = {ik: cut(iv, 60) for ik, iv in r["inp"].items()}
-            else:
-                r[k] = cut(r[k], 60)
-            data = json.dumps(r, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "replace")
-    return data if len(data) <= MAXDGRAM else None
+    inp = _compact_inputs(p.get("tool_input"))
+    if inp:
+        r["inp"] = inp
+    return _shrink_and_encode(r)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -227,6 +302,8 @@ def write_stdout(data):
 # entry points (callers wrap them: catch BaseException, exit 0)
 # ---------------------------------------------------------------------------------------------
 def hook_main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    agent, event = _parse_hook_argv(argv)
     raw = read_stdin()
     tgt = target()
     if tgt is None:  # daemon not running: cheapest possible exit
@@ -235,8 +312,7 @@ def hook_main(argv=None):
     p = json.loads(raw.decode("utf-8", "replace"))
     if not isinstance(p, dict):
         return
-    argv = sys.argv[1:] if argv is None else argv
-    data = compact(p, argv[0] if argv else "", tgt[2])
+    data = compact(p, event, tgt[2], agent=agent)
     if data:
         send(data, tgt)
 
@@ -368,11 +444,18 @@ def statusline_main(argv=None):
 
 def run_hook(argv=None):
     """`hook` entry point: run, swallow everything, flush, hard-exit 0 (skips interpreter teardown).
-    argv: the arguments after the command (optional event name fallback)."""
+    argv: the arguments after the command (optional `--agent <name>` and event name fallback).
+    Antigravity hooks expect a valid JSON object (`{}`) on stdout; Claude Code hooks must remain silent."""
+    agent, _ = _parse_hook_argv(sys.argv[1:] if argv is None else argv)
     try:
         hook_main(argv)
     except BaseException:
         pass
+    if agent == "antigravity":
+        try:
+            write_stdout(b"{}\n")
+        except BaseException:
+            pass
     try:
         sys.stdout.flush()
     except BaseException:

@@ -71,13 +71,13 @@ done
 [ "$APP_FOUND" = 1 ] || echo "  none"
 # (not booted out: launchd only reads the app's plist at login, and booting it out would kill a running app)
 
-echo "==> Claude Code settings"
+echo "==> Agent hooks (Claude Code / Antigravity)"
 PY="$ROOT/host/.venv/bin/python"
 [ -x "$PY" ] || PY=/usr/bin/python3
 # a checkout last installed as "Claudius Maximus": move its state first, so the uninstall finds the hooks
 # manifest and restores the chained statusLine from it
 PYTHONPATH="$ROOT/host" "$PY" -c 'from companion import hostos; hostos.migrate_state_dir()' 2>/dev/null || true
-"$PY" "$ROOT/host/hooks/sqrm8_settings.py" uninstall
+"$PY" "$ROOT/host/hooks/sqrm8_settings.py" uninstall --agent all
 
 echo "==> State and logs"
 for n in $NAMES; do

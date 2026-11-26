@@ -165,6 +165,8 @@ class _Session:
 
 
 class SessionsProvider(Provider):
+    source_name = "claude"
+
     def __init__(self, base: str | None = None):
         self.base = base or claude_dir()
         self.reg_dir = os.path.join(self.base, "sessions")
@@ -197,28 +199,57 @@ class SessionsProvider(Provider):
         ev, self.events = self.events, []
         return ev
 
-    def contribute(self, state: dict) -> None:
-        now = time.time()
-        out = [self._session_json(s, now) for s in self.sessions.values()]
-
-        def recency(x):
-            return max(x.get("since") or 0, (x.get("activity") or {}).get("ts") or 0)
-        out.sort(key=lambda x: (x["status"] == "offline", -recency(x)))
-        state["sessions"] = out
-        st = [x["status"] for x in out]
+    def today_totals(self) -> tuple[int, float, int, int]:
         today = time.strftime("%Y-%m-%d")
-        tok = cost = tools = prompts = 0
+        tok = tools = prompts = 0
+        cost = 0.0
         for tr in self.transcripts.values():
             if tr.day == today:
                 tok += tr.today[0]
                 cost += tr.today[1]
                 tools += tr.today[2]
                 prompts += tr.today[3]
+        return int(tok), cost, int(tools), int(prompts)
+
+    def contribute_sessions(self) -> list[dict]:
+        now = time.time()
+        return [self._session_json(s, now) for s in self.sessions.values()]
+
+    def focus_info(self, sid: str) -> dict | None:
+        if not sid:
+            return None
+        for full_id, s in self.sessions.items():
+            if full_id.startswith(sid) and s.pid:
+                return {"sid": full_id, "pid": s.pid, "cwd": s.cwd, "source": "claude", "surface": s.kind}
+        return None
+
+    def contribute(self, state: dict) -> None:
+        out = self.contribute_sessions()
+        existing = state.get("sessions")
+        if isinstance(existing, list):
+            seen = {str(x.get("id", ""))[:8] for x in existing if isinstance(x, dict)}
+            merged = list(existing) + [x for x in out if x["id"] not in seen]
+        else:
+            merged = out
+
+        def recency(x):
+            return max(x.get("since") or 0, (x.get("activity") or {}).get("ts") or 0)
+        merged.sort(key=lambda x: (x.get("status") == "offline", -recency(x)))
+        state["sessions"] = merged
+        st = [x.get("status") for x in merged if isinstance(x, dict)]
+        tok, cost, tools, prompts = self.today_totals()
+        prev = state.get("totals")
+        if isinstance(prev, dict):
+            tok += int(prev.get("tokens_today") or 0)
+            cost += float(prev.get("cost_today") or 0.0)
+            tools += int(prev.get("tools_today") or 0)
+            prompts += int(prev.get("prompts_today") or 0)
         state["totals"] = {
             "sessions": sum(1 for x in st if x != "offline"),
             "busy": st.count("busy"), "waiting": st.count("waiting"), "idle": st.count("idle"),
             "offline": st.count("offline"),
-            "subagents_active": sum(1 for x in out for a in x.get("subagents", []) if a["status"] == "busy"),
+            "subagents_active": sum(1 for x in merged if isinstance(x, dict)
+                                    for a in (x.get("subagents") or []) if isinstance(a, dict) and a.get("status") == "busy"),
             "tokens_today": int(tok), "cost_today": round(cost, 2),
             "tools_today": int(tools), "prompts_today": int(prompts),
         }
@@ -609,6 +640,7 @@ class SessionsProvider(Provider):
             "tool_count": tools,
             "subagents": subs_out,
             "kind": ascii_text(s.kind, 16),
+            "source": "claude",
         }
         if not out["activity"].get("ts"):
             out["activity"]["ts"] = int(s.started or now)

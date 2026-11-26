@@ -74,6 +74,7 @@ import sys
 import time
 
 from .base import Provider
+from ..sessions_text import model_label, normalize_tool, tool_label as _canon_tool_label
 
 log = logging.getLogger("companion.hooks")
 
@@ -128,44 +129,48 @@ def _relpath(p: str, cwd: str | None) -> str:
 def summarize_tool(tool: str, inp: dict | None, cwd: str | None = None) -> str:
     """Short human summary of a tool call (<= 80 chars)."""
     inp = inp or {}
-    t = tool or ""
+    t = normalize_tool(tool or "")
     if t == "Bash":
-        return _short(inp.get("description") or inp.get("command") or "")
+        return _short(inp.get("description") or inp.get("toolSummary") or inp.get("command") or inp.get("CommandLine") or "")
     if t in ("Read", "Edit", "Write", "MultiEdit", "NotebookEdit"):
-        p = inp.get("file_path") or inp.get("notebook_path") or inp.get("path") or ""
+        p = (inp.get("file_path") or inp.get("filePath") or inp.get("notebook_path")
+             or inp.get("path") or inp.get("Path") or inp.get("TargetFile") or "")
         return _short(_relpath(p, cwd))
     if t in ("Grep", "Glob"):
-        return _short(inp.get("pattern") or inp.get("glob") or "")
+        return _short(inp.get("pattern") or inp.get("Pattern") or inp.get("Query") or inp.get("glob") or "")
+    if t == "LS":
+        p = inp.get("path") or inp.get("DirectoryPath") or inp.get("Path") or ""
+        return _short(_relpath(p, cwd))
     if t == "WebFetch":
-        u = inp.get("url") or ""
+        u = inp.get("url") or inp.get("Url") or ""
         for pre in ("https://", "http://", "www."):
             if u.startswith(pre):
                 u = u[len(pre):]
         return _short(u)
     if t == "WebSearch":
-        return _short(inp.get("query") or "")
+        return _short(inp.get("query") or inp.get("Query") or "")
     if t in AGENT_TOOLS:
-        return _short(inp.get("description") or inp.get("prompt") or "")
+        return _short(inp.get("description") or inp.get("Role") or inp.get("prompt") or inp.get("Prompt") or "")
     if t == "Skill":
         return _short(inp.get("skill") or "")
     if t == "AskUserQuestion":
         return _short(inp.get("questions") or "Question")
     if t == "ExitPlanMode":
         return "Plan ready for review"
+    if t == "TodoWrite":
+        return _short(inp.get("steps") or inp.get("todos") or "")
     if t.startswith("mcp__"):
         parts = t.split("__")
         return _short(" ".join(parts[1:]))
-    for k in ("description", "command", "file_path", "path", "pattern", "url", "query", "prompt"):
+    for k in ("toolSummary", "description", "command", "CommandLine", "file_path", "filePath", "path", "Path",
+              "TargetFile", "pattern", "Pattern", "url", "Url", "query", "Query", "prompt", "Prompt"):
         if inp.get(k):
-            return _short(_relpath(inp[k], cwd) if k in ("file_path", "path") else inp[k])
+            return _short(_relpath(inp[k], cwd) if k.lower() in ("file_path", "filepath", "path", "targetfile") else inp[k])
     return ""
 
 
 def tool_label(tool: str) -> str:
-    if tool and tool.startswith("mcp__"):
-        parts = tool.split("__")
-        return parts[-1][:24] if len(parts) > 2 else tool[:24]
-    return tool or ""
+    return _canon_tool_label(tool or "")
 
 
 class HooksProvider(Provider):
@@ -352,17 +357,20 @@ class HooksProvider(Provider):
         pass  # merged by daemon.merge_hooks(state, self)
 
     # -- state ------------------------------------------------------------------------------
-    def _sess(self, sid: str, ts: float, cwd: str | None) -> dict:
+    def _sess(self, sid: str, ts: float, cwd: str | None, source: str = "claude") -> dict:
         s = self.sessions.get(sid)
         if s is None:
             s = self.sessions[sid] = {
-                "sid": sid, "status": None, "since": 0, "started": int(ts), "last": ts, "cwd": cwd or "",
+                "sid": sid, "source": source or "claude", "status": None, "since": 0, "started": int(ts),
+                "last": ts, "cwd": cwd or "",
                 "activity": None, "subagents": {}, "pending_agent_desc": [], "last_prompt": None,
                 "title": None, "model": None, "ctx_pct": None, "cost": None, "waiting_text": None,
             }
         s["last"] = max(s["last"], ts)
         if cwd and not s["cwd"]:
             s["cwd"] = cwd
+        if source and source != "claude":
+            s["source"] = source
         return s
 
     def _set_status(self, s: dict, status: str, ts: float) -> bool:
@@ -393,20 +401,22 @@ class HooksProvider(Provider):
         ts = float(ts) if isinstance(ts, (int, float)) else time.time()
         self.received += 1
         self.last_hook_at = time.time()
-        s = self._sess(sid, ts, m.get("cwd"))
+        src_agent = m.get("sa") or m.get("src_agent") or "claude"
+        s = self._sess(sid, ts, m.get("cwd"), source=src_agent)
         aid = (m.get("aid") or "")[:8] or None
-        tool = m.get("tool") or ""
+        raw_tool = m.get("tool") or ""
+        tool = normalize_tool(raw_tool)
         inp = m.get("inp") if isinstance(m.get("inp"), dict) else {}
         if m.get("title"):
             s["title"] = m["title"]
-        if m.get("model") and isinstance(m["model"], str):
-            s["model"] = m["model"]
+        if m.get("model") and isinstance(m["model"], str) and m["model"].lower() != "auto":
+            s["model"] = model_label(m["model"]) if src_agent != "claude" else m["model"]
 
         if ev == "SessionStart":
             self._set_status(s, "idle", ts)
             s["started"] = int(ts) if m.get("src") in (None, "startup") else s["started"]
             if m.get("src") in (None, "startup", "resume", "fork"):
-                self._event("session_start", s, ts, text=m.get("src"))
+                self._event("session_start", s, ts, text=m.get("src") or (src_agent if src_agent != "claude" else None))
         elif ev == "SessionEnd":
             self._set_status(s, "offline", ts)
             self._event("session_end", s, ts, text=m.get("why"))
@@ -417,10 +427,20 @@ class HooksProvider(Provider):
             if m.get("src") in (None, "user") and not txt.startswith("<"):
                 s["last_prompt"] = txt
                 self._event("prompt", s, ts, text=txt)
+        elif ev == "PreInvocation":
+            self._set_status(s, "busy", ts)
+            s["waiting_text"] = None
+            txt = _short(m.get("prompt") or "", 120)
+            if txt and not txt.startswith("<") and txt != s["last_prompt"]:
+                s["last_prompt"] = txt
+                self._event("prompt", s, ts, text=txt)
+        elif ev == "PostInvocation":
+            self._set_status(s, "busy", ts)
+            s["waiting_text"] = None
         elif ev == "PreToolUse":
             detail = summarize_tool(tool, inp, s["cwd"])
             if tool in AGENT_TOOLS:
-                s["pending_agent_desc"].append((detail, inp.get("subagent_type") or ""))
+                s["pending_agent_desc"].append((detail, inp.get("subagent_type") or inp.get("TypeName") or ""))
                 del s["pending_agent_desc"][:-8]
             act = {"tool": tool_label(tool), "detail": detail, "ts": int(ts)}
             if aid:
@@ -449,6 +469,16 @@ class HooksProvider(Provider):
             if not aid or s["status"] == "waiting":
                 self._set_status(s, "busy", ts)
             s["waiting_text"] = None
+            if ev == "PostToolUse" and src_agent != "claude" and tool:
+                detail = summarize_tool(tool, inp, s["cwd"])
+                act = {"tool": tool_label(tool), "detail": detail, "ts": int(ts)}
+                if not aid:
+                    s["activity"] = act
+                # No "tool" event from here: the agent's transcript provider already emits one per call (with a
+                # different text, so the dedupe would let both through). Errors are a hook-covered kind.
+                if m.get("err"):
+                    self._event("tool_error", s, ts, tool=tool_label(tool), text=_short(m.get("err") or "", 80),
+                                agent=aid)
         elif ev == "PostToolUseFailure":
             if m.get("intr"):
                 self._set_status(s, "idle", ts)  # user interrupted: no Stop hook will follow
@@ -460,7 +490,10 @@ class HooksProvider(Provider):
         elif ev == "Stop":
             self._set_status(s, "idle", ts)
             s["waiting_text"] = None
-            self._event("stop", s, ts, text=_short(m.get("last") or "", 80))
+            stop_txt = m.get("last") or ""
+            if not stop_txt and m.get("err"):
+                stop_txt = "Error: " + str(m["err"])
+            self._event("stop", s, ts, text=_short(stop_txt, 80))
         elif ev == "StopFailure":
             self._set_status(s, "idle", ts)
             self._event("stop", s, ts, text=_short("API error: " + (m.get("err") or "unknown"), 80))
@@ -526,7 +559,7 @@ class HooksProvider(Provider):
         out = {}
         for sid, s in self.sessions.items():
             out[sid[:8]] = {
-                "full_id": sid,
+                "full_id": sid, "source": s.get("source") or "claude",
                 "status": s["status"], "since": s["since"], "started": s["started"], "last": s["last"],
                 "cwd": s["cwd"], "name": self._name(s), "title": s["title"], "model": s["model"],
                 "activity": s["activity"], "last_prompt": s["last_prompt"], "waiting_text": s["waiting_text"],

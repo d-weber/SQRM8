@@ -72,6 +72,8 @@ import urllib.request
 from datetime import datetime, timedelta
 
 from .base import Provider
+from .. import hostos
+from ..sessions_text import DEFAULT_PRICE, PRICES, model_family, price_of
 
 log = logging.getLogger("companion.usage")
 
@@ -101,20 +103,7 @@ CREDENTIALS_FILE = os.path.join(CLAUDE_DIR, ".credentials.json")
 KEYCHAIN_SERVICE = "Claude Code-credentials"   # macOS: Claude Code keeps the same JSON in the login Keychain
 MODEL_WEEK_PREFERRED = ("fable", "opus", "sonnet")
 
-# USD per million tokens: (input, output, cache_read). Cache write = 1.25x input (5m) / 2x input (1h).
-PRICES = [
-    ("claude-fable-5-1", (10.0, 50.0, 0.25)),
-    ("claude-mythos", (10.0, 50.0, 0.25)),
-    ("claude-fable", (10.0, 50.0, 1.0)),
-    ("claude-opus-5-5", (4.0, 20.0, 0.20)),
-    ("claude-opus", (5.0, 25.0, 0.50)),
-    ("claude-sonnet-5", (2.0, 10.0, 0.20)),
-    ("claude-sonnet", (3.0, 15.0, 0.30)),
-    ("claude-haiku-5", (0.10, 0.50, 0.01)),
-    ("claude-haiku", (1.0, 5.0, 0.10)),
-]
-DEFAULT_PRICE = (4.0, 20.0, 0.20)
-FAMILIES = ("opus", "fable", "sonnet", "haiku")
+FAMILIES = ("opus", "fable", "sonnet", "haiku", "gemini")
 
 RESCAN_S = 10.0         # how often to glob for new / grown files (stats are recomputed <= every 10 s anyway)
 BUDGET_S = 0.15         # max parse time per poll()
@@ -122,18 +111,8 @@ MINUTE_KEEP_S = 48 * 3600
 DAY_KEEP = 400
 
 
-def price_of(model: str):
-    for prefix, p in PRICES:
-        if model.startswith(prefix):
-            return p
-    return DEFAULT_PRICE
-
-
 def family_of(model: str) -> str:
-    for f in FAMILIES:
-        if f in model:
-            return f
-    return "other"
+    return model_family(model)
 
 
 def parse_ts(s) -> int:
@@ -159,9 +138,20 @@ class _FileState:
 
 
 class UsageProvider(Provider):
-    def __init__(self, projects_glob: str = PROJECTS_GLOB):
+    def __init__(self, projects_glob: str = PROJECTS_GLOB, antigravity_dirs: list[str] | None = None):
         self.glob = projects_glob
+        if antigravity_dirs is None:
+            # Auto-include Antigravity transcripts only with the default glob (keeps isolated unit tests pure)
+            if projects_glob == PROJECTS_GLOB:
+                enabled = hostos.enabled_agents()
+                self.antigravity_dirs = ([d for _s, d in hostos.antigravity_dirs()]
+                                         if (enabled is None or "antigravity" in enabled) else [])
+            else:
+                self.antigravity_dirs = []
+        else:
+            self.antigravity_dirs = list(antigravity_dirs)
         self.files: dict[str, _FileState] = {}
+        self.file_sources: dict[str, str] = {}   # path -> "claude" | "antigravity"
         self.queue: list[str] = []          # files with unread bytes
         self.last_scan = 0.0
         # message id -> (in, out, cr, cw) already counted
@@ -200,15 +190,28 @@ class UsageProvider(Provider):
 
     def _scan_files(self, now: float):
         self.last_scan = now
+        found: list[tuple[str, str]] = []
         try:
-            paths = glob.glob(self.glob, recursive=True)
+            for p in glob.glob(self.glob, recursive=True):
+                found.append((p, "claude"))
         except Exception:
-            return
-        for p in paths:
+            pass
+        for base in self.antigravity_dirs:
+            brain = os.path.join(base, "brain")
+            if not os.path.isdir(brain):
+                continue
+            pat = os.path.join(glob.escape(brain), "*", ".system_generated", "logs", "transcript.jsonl")
+            try:
+                for p in glob.glob(pat):
+                    found.append((p, "antigravity"))
+            except Exception:
+                pass
+        for p, src in found:
             try:
                 st = os.stat(p)
             except OSError:
                 continue
+            self.file_sources[p] = src
             fs = self.files.get(p)
             if fs is None:
                 fs = self.files[p] = _FileState()
@@ -226,6 +229,7 @@ class UsageProvider(Provider):
         while self.queue and time.monotonic() < deadline:
             p = self.queue[0]
             fs = self.files[p]
+            src = self.file_sources.get(p, "claude")
             done = True
             try:
                 with open(p, "rb") as fh:
@@ -243,13 +247,43 @@ class UsageProvider(Provider):
                             if not chunk.endswith(b"\n"):
                                 break                   # partial last line: wait for the writer
                             end = len(chunk) - 1
-                        self._parse_block(chunk[: end + 1])
+                        if src == "antigravity":
+                            self._parse_antigravity_block(p, chunk[: end + 1])
+                        else:
+                            self._parse_block(chunk[: end + 1])
                         fs.offset += end + 1
                         fh.seek(fs.offset)
             except OSError:
                 pass
             if done:
                 self.queue.pop(0)
+
+    def _parse_antigravity_block(self, path: str, block: bytes):
+        for line in block.split(b"\n"):
+            if b'"PLANNER_RESPONSE"' not in line:
+                continue
+            # Per line, and for any error: an exception here would leave poll() before the offset advances, so
+            # the file would stay at the head of the queue and block every older one (Claude's included).
+            try:
+                d = json.loads(line)
+                if not isinstance(d, dict) or d.get("type") != "PLANNER_RESPONSE":
+                    continue
+                model = d.get("model") or ""
+                if not isinstance(model, str) or not model or model.startswith("<"):
+                    continue
+                i = int(d.get("input_tokens") or 0)
+                o = int(d.get("output_tokens") or 0)
+                cr = int(d.get("cache_read_tokens") or 0)
+                if not (i or o or cr):
+                    continue
+                ts = parse_ts(d.get("created_at") or d.get("timestamp"))
+                if not ts:
+                    continue
+                step = d.get("step_index")
+                mid = f"agy:{path}:{step if step is not None else ts}"
+                self._add(mid, model, {"input_tokens": i, "output_tokens": o, "cache_read_input_tokens": cr}, ts)
+            except Exception:
+                continue
 
     def _parse_block(self, block: bytes):
         for line in block.split(b"\n"):

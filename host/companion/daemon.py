@@ -158,8 +158,14 @@ def build_providers(demo: bool):
     if not hostos.env("RATE_LIMITS"):
         os.environ["SQRM8_RATE_LIMITS"] = os.path.join(state_dir(), "statusline.json")
     out = []
-    for mod, cls in (("sessions", "SessionsProvider"), ("usage", "UsageProvider"),
-                     ("system", "SystemProvider"), ("hooks", "HooksProvider")):
+    enabled = hostos.enabled_agents()
+    specs = []
+    if enabled is None or "claude" in enabled:
+        specs.append(("sessions", "SessionsProvider"))
+    if enabled is None or "antigravity" in enabled:
+        specs.append(("antigravity", "AntigravityProvider"))
+    specs += [("usage", "UsageProvider"), ("system", "SystemProvider"), ("hooks", "HooksProvider")]
+    for mod, cls in specs:
         try:
             m = __import__(f"companion.providers.{mod}", fromlist=[cls])
             out.append(getattr(m, cls)())
@@ -238,6 +244,15 @@ def merge_hooks(state: dict, hooks) -> None:
             s["cost"] = h["cost"]
         if s.get("status") == "waiting" and h.get("waiting_text"):
             s["waiting"] = h["waiting_text"]
+        if h.get("cwd") and (not s.get("cwd") or s.get("name") == sid):
+            s["cwd"] = _tilde(h["cwd"])
+            if h.get("name"):
+                s["name"] = h["name"]
+                s["project"] = h["name"]
+        if h.get("model") and not s.get("model"):
+            s["model"] = h["model"]
+        if h.get("source") and not s.get("source"):
+            s["source"] = h["source"]
         if h.get("last_prompt") and not s.get("last_prompt"):
             s["last_prompt"] = h["last_prompt"]
         if h.get("subagents"):
@@ -265,7 +280,8 @@ def merge_hooks(state: dict, hooks) -> None:
              "status": h["status"], "since": h["since"], "started": h["started"],
              "activity": dict(h["activity"]) if h.get("activity") else {"tool": "", "detail": "", "ts": h["since"]},
              "subagents": [{k: x[k] for k in ("id", "desc", "type", "status", "tool", "detail", "started")}
-                           for x in h.get("subagents") or []]}
+                           for x in h.get("subagents") or []],
+             "source": h.get("source") or "claude"}
         for k in ("title", "model", "last_prompt", "ctx_pct", "cost"):
             if h.get(k) is not None:
                 s[k] = h[k]
@@ -283,7 +299,7 @@ def merge_hooks(state: dict, hooks) -> None:
     if isinstance(totals, dict):
         st = [s.get("status") for s in sessions if isinstance(s, dict)]
         totals["sessions"] = sum(1 for x in st if x != "offline")
-        for k in ("busy", "waiting", "idle"):
+        for k in ("busy", "waiting", "idle", "offline"):
             totals[k] = st.count(k)
         totals["subagents_active"] = sum(
             1 for s in sessions if isinstance(s, dict)
@@ -318,12 +334,15 @@ class EventFilter:
         now = time.time()
         out = []
         is_hooks = type(source).__name__ == "HooksProvider"
+        covered = None if is_hooks else (source.hook_covered_kinds() if hasattr(source, "hook_covered_kinds") else None)
+        if covered is None:
+            covered = HOOK_KINDS
         for e in events:
             if not isinstance(e, dict):
                 continue
             e.setdefault("t", "event")
             sid = str(e.get("sid", ""))[:8]
-            if not is_hooks and sid in hook_sids and e.get("kind") in HOOK_KINDS:
+            if not is_hooks and sid in hook_sids and e.get("kind") in covered:
                 continue
             key = (e.get("kind"), sid, e.get("tool"), e.get("text"), e.get("agent"))
             if now - self.recent.get(key, 0) < DEDUPE_S:
@@ -646,8 +665,15 @@ class Daemon:
 
     def _focus(self, sid: str):
         try:
+            info = None
+            for p in self.providers:
+                fn = getattr(p, "focus_info", None)
+                if fn:
+                    info = fn(sid)
+                    if info:
+                        break
             from .runtime_focus import focus_session
-            r = focus_session(sid)
+            r = focus_session(sid, info=info)
         except Exception as e:
             r = f"focus {sid} failed: {e}"
         log.info("%s", r)
@@ -739,7 +765,8 @@ class Daemon:
     def status_dict(self, now: float | None = None) -> dict:
         """What status.json holds (and public_status() returns). Call with self._lock held."""
         now = time.time() if now is None else now
-        sess = [{"id": s.get("id"), "name": s.get("name"), "status": s.get("status")}
+        sess = [{"id": s.get("id"), "name": s.get("name"), "status": s.get("status"),
+                 **({"source": s["source"]} if s.get("source") else {})}
                 for s in list(self.last_state.get("sessions", []) or []) if isinstance(s, dict)]
         connected = self.link.connected
         if self.paused is not None:

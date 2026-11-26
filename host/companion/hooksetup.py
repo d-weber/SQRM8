@@ -33,16 +33,17 @@ import json
 import os
 import re
 import shlex
+import shutil
 import sys
 import time
 
 HOOK_MARK = "sqrm8_hook.py"
 SL_MARK = "sqrm8_statusline.py"
 LEGACY_MARKS = {"hook": "cm_hook.py", "statusline": "cm_statusline.py"}   # the shims' names before 0.8.0
-# `"<exe>" hook` where the exe is our app (sqrm8 / SQRM8.exe / SQRM8-0.8.0-linux-x64.AppImage...), or
-# `... -m companion hook`. Matched on the whole command, case-insensitive.
+# `"<exe>" hook [--agent ...]` where the exe is our app (sqrm8 / SQRM8.exe / SQRM8-0.8.0-linux-x64.AppImage...), or
+# `... -m companion hook [--agent ...]`. Matched on the whole command, case-insensitive.
 _APP_RE = {
-    "hook": re.compile(r'(?i)(sqrm8[^"\s]*"?|-m\s+companion)\s+hook\s*$'),
+    "hook": re.compile(r'(?i)(sqrm8[^"\s]*"?|-m\s+companion)\s+hook(\s+--agent[=\s][a-z0-9_-]+)?\s*$'),
     "statusline": re.compile(r'(?i)(sqrm8[^"\s]*"?|-m\s+companion)\s+statusline\s*$'),
 }
 # The same for the app before 0.8.0 (claudius-maximus / ClaudiusMaximus / Claudius Maximus.app...).
@@ -50,6 +51,14 @@ _LEGACY_APP_RE = {
     "hook": re.compile(r'(?i)claudius[ _-]?maximus[^"\s]*"?\s+hook\s*$'),
     "statusline": re.compile(r'(?i)claudius[ _-]?maximus[^"\s]*"?\s+statusline\s*$'),
 }
+
+# Antigravity global hooks (`~/.gemini/config/hooks.json`).
+# PreToolUse is intentionally OMITTED: Antigravity treats PreToolUse as a fail-closed permission gate
+# (`{}` denies tools; `"allow"` would bypass user permission prompts). Pre-execution tool activity and
+# `ask_question` prompts come from Antigravity's live transcript.jsonl instead.
+ANTIGRAVITY_HOOK_KEY = "sqrm8"
+ANTIGRAVITY_FLAT_EVENTS = ("SessionStart", "PreInvocation", "PostInvocation", "Stop")
+ANTIGRAVITY_GROUPED_EVENTS = ("PostToolUse",)
 
 # event -> matcher (None = all)
 EVENTS = {
@@ -87,6 +96,35 @@ def settings_path() -> str:
     return os.path.join(base, "settings.json")
 
 
+def antigravity_hooks_path() -> str:
+    """Antigravity's global hooks file ($GEMINI_CONFIG_DIR/hooks.json or ~/.gemini/config/hooks.json)."""
+    base = os.environ.get("GEMINI_CONFIG_DIR") or os.path.join(home(), ".gemini", "config")
+    return os.path.join(base, "hooks.json")
+
+
+def claude_detected() -> bool:
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(home(), ".claude")
+    return os.path.isdir(base) or bool(shutil.which("claude"))
+
+
+def antigravity_detected() -> bool:
+    """One of Antigravity's own data directories, or `agy` on the PATH. ~/.gemini alone is not enough: it is
+    the Gemini CLI's directory too, and "detected" is what lets an install write a hooks.json there."""
+    from .hostos import antigravity_dirs
+    if any(os.path.isdir(d) for _, d in antigravity_dirs()):
+        return True
+    return bool(shutil.which("agy"))
+
+
+def detected_agents() -> list[str]:
+    found = []
+    if claude_detected():
+        found.append("claude")
+    if antigravity_detected():
+        found.append("antigravity")
+    return found
+
+
 # ---------------------------------------------------------------------------------------------
 # command forms
 # ---------------------------------------------------------------------------------------------
@@ -98,8 +136,11 @@ def quote(arg: str) -> str:
     return f'"{arg}"'
 
 
-def script_command(python: str, script: str) -> str:
-    return f"{quote(python)} -I -S {quote(script)}"
+def script_command(python: str, script: str, agent: str = "claude") -> str:
+    cmd = f"{quote(python)} -I -S {quote(script)}"
+    if agent and agent != "claude":
+        cmd += f" --agent {agent}"
+    return cmd
 
 
 def hooks_script_dir() -> str | None:
@@ -108,17 +149,19 @@ def hooks_script_dir() -> str | None:
     return d if os.path.exists(os.path.join(d, HOOK_MARK)) else None
 
 
-def hook_command(which: str = "hook") -> str:
+def hook_command(which: str = "hook", agent: str = "claude") -> str:
     """The command that runs our hook (`which`="hook") or statusLine wrapper ("statusline") for the running
     program: frozen app -> "<exe>" hook; repo checkout -> "<python>" -I -S "<host/hooks/sqrm8_hook.py>";
     otherwise (pip install) -> "<python>" -m companion hook."""
+    suffix = f" --agent {agent}" if (which == "hook" and agent and agent != "claude") else ""
     if getattr(sys, "frozen", False):
         exe = os.environ.get("APPIMAGE") or sys.executable
-        return f"{quote(exe)} {which}"
+        return f"{quote(exe)} {which}{suffix}"
     d = hooks_script_dir()
     if d:
-        return script_command(sys.executable, os.path.join(d, HOOK_MARK if which == "hook" else SL_MARK))
-    return f"{quote(sys.executable)} -m companion {which}"
+        return script_command(sys.executable, os.path.join(d, HOOK_MARK if which == "hook" else SL_MARK),
+                              agent=agent if which == "hook" else "claude")
+    return f"{quote(sys.executable)} -m companion {which}{suffix}"
 
 
 def _is_current_command(cmd: str, which: str) -> bool:
@@ -389,12 +432,194 @@ def check() -> int:
     return 3 if inst["legacy"] else 0
 
 
+# ---------------------------------------------------------------------------------------------
+# Antigravity global hooks (~/.gemini/config/hooks.json)
+# ---------------------------------------------------------------------------------------------
+def _antigravity_hook_entry(hook_cmd: str) -> dict:
+    handler = {"type": "command", "command": hook_cmd, "timeout": 5}
+    entry: dict = {"enabled": True}
+    for ev in ANTIGRAVITY_FLAT_EVENTS:
+        entry[ev] = [dict(handler)]
+    for ev in ANTIGRAVITY_GROUPED_EVENTS:
+        entry[ev] = [{"matcher": "", "hooks": [dict(handler)]}]
+    return entry
+
+
+def install_antigravity(hook_cmd: str | None = None) -> int:
+    """Idempotently install SQRM8's observational hooks into Antigravity's global hooks.json."""
+    cmd = hook_cmd or hook_command("hook", agent="antigravity")
+    path = antigravity_hooks_path()
+    existed = os.path.exists(path)
+    d = load_settings(path)
+    m = read_manifest()
+    if "had_antigravity_hooks_file" not in m:
+        m["had_antigravity_hooks_file"] = existed
+    before = json.dumps(d, sort_keys=True)
+    d[ANTIGRAVITY_HOOK_KEY] = _antigravity_hook_entry(cmd)
+    m["antigravity_installed_at"] = int(time.time())
+    m["antigravity_hook_command"] = cmd
+    if json.dumps(d, sort_keys=True) != before:
+        save_settings(path, d)
+        print(f"  updated {path}")
+    else:
+        print(f"  {path} already up to date")
+    write_manifest(m)
+    return 0
+
+
+def install_antigravity_script(root: str, python: str) -> int:
+    cmd = script_command(python, os.path.join(root, "host", "hooks", HOOK_MARK), agent="antigravity")
+    return install_antigravity(cmd)
+
+
+def install_antigravity_for_app() -> int:
+    return install_antigravity(hook_command("hook", agent="antigravity"))
+
+
+def uninstall_antigravity() -> int:
+    path = antigravity_hooks_path()
+    if not os.path.exists(path):
+        print(f"  {path}: nothing of ours found")
+        return 0
+    try:
+        d = load_settings(path)
+    except (ValueError, OSError) as e:
+        print(f"error: cannot parse {path}: {e}; not touching it", file=sys.stderr)
+        return 2
+    m = read_manifest()
+    before = json.dumps(d, sort_keys=True)
+    d.pop(ANTIGRAVITY_HOOK_KEY, None)
+    if d == {} and m.get("had_antigravity_hooks_file") is False and os.path.exists(path):
+        os.remove(path)
+        print(f"  removed {path} (created by install)")
+    elif json.dumps(d, sort_keys=True) != before:
+        save_settings(path, d)
+        print(f"  cleaned {path}")
+    else:
+        print(f"  {path}: nothing of ours found")
+    return 0
+
+
+def antigravity_installed() -> dict:
+    """{"hooks": bool, "commands": [our hook commands]} from Antigravity's global hooks.json."""
+    out: dict = {"hooks": False, "commands": []}
+    try:
+        d = load_settings(antigravity_hooks_path())
+    except Exception:
+        return out
+    entry = d.get(ANTIGRAVITY_HOOK_KEY)
+    if not isinstance(entry, dict) or entry.get("enabled") is False:
+        return out
+    for ev in ANTIGRAVITY_FLAT_EVENTS:
+        for h in (entry.get(ev) if isinstance(entry.get(ev), list) else []):
+            if _is_ours(h, HOOK_MARK):
+                out["hooks"] = True
+                if h.get("command") not in out["commands"]:
+                    out["commands"].append(h.get("command"))
+    for ev in ANTIGRAVITY_GROUPED_EVENTS:
+        for g in (entry.get(ev) if isinstance(entry.get(ev), list) else []):
+            for h in (g.get("hooks") if isinstance(g, dict) and isinstance(g.get("hooks"), list) else []):
+                if _is_ours(h, HOOK_MARK):
+                    out["hooks"] = True
+                    if h.get("command") not in out["commands"]:
+                        out["commands"].append(h.get("command"))
+    return out
+
+
+def antigravity_installed_matches_self() -> bool:
+    inst = antigravity_installed()
+    return bool(inst["hooks"] and inst["commands"] == [hook_command("hook", agent="antigravity")])
+
+
+def antigravity_check() -> int:
+    """0 installed, 1 not installed, 2 hooks.json unreadable."""
+    try:
+        load_settings(antigravity_hooks_path())
+    except Exception:
+        return 2
+    return 0 if antigravity_installed()["hooks"] else 1
+
+
+# ---------------------------------------------------------------------------------------------
+# Multi-agent orchestration
+# ---------------------------------------------------------------------------------------------
+def resolve_agents(agent: str = "auto") -> list[str]:
+    a = (agent or "auto").strip().lower()
+    if a == "all":
+        return ["claude", "antigravity"]
+    if a in ("claude", "antigravity"):
+        return [a]
+    # auto: Claude Code always (what `hooks install` did before there were other agents), the others when found
+    return ["claude"] + [x for x in detected_agents() if x != "claude"]
+
+
+def install_agents(agent: str = "auto", statusline: bool = True, root: str | None = None,
+                   python: str | None = None) -> dict[str, int]:
+    results: dict[str, int] = {}
+    for target in resolve_agents(agent):
+        if target == "claude":
+            results["claude"] = (install(root, python, statusline) if (root and python)
+                                 else install_for_app(statusline))
+        elif target == "antigravity":
+            try:
+                results["antigravity"] = (install_antigravity_script(root, python) if (root and python)
+                                          else install_antigravity_for_app())
+            except (ValueError, OSError) as e:
+                # its own file, its own failure: the Claude Code result above must survive it
+                print(f"error: cannot update {antigravity_hooks_path()}: {e}", file=sys.stderr)
+                results["antigravity"] = 2
+    return results
+
+
+def exit_code(results: dict[str, int], agent: str = "auto") -> int:
+    """The process exit code for a set of per-agent results. In auto mode only Claude Code decides it: an
+    optional agent that was merely detected must not fail an installer (tools/install.sh runs under `set -e`)
+    or turn `hooks check` red for someone who never asked for it."""
+    if (agent or "auto").strip().lower() == "auto" and "claude" in results:
+        return results["claude"]
+    return max(results.values()) if results else 0
+
+
+def uninstall_agents(agent: str = "all") -> dict[str, int]:
+    a = (agent or "all").strip().lower()
+    targets = ["claude", "antigravity"] if a in ("all", "auto") else [a]
+    results: dict[str, int] = {}
+    for target in targets:
+        if target == "claude":
+            results["claude"] = uninstall()
+        elif target == "antigravity":
+            results["antigravity"] = uninstall_antigravity()
+    return results
+
+
+def status_all() -> dict[str, dict]:
+    cc = installed()
+    ag = antigravity_installed()
+    return {
+        "claude": {
+            "detected": claude_detected(),
+            "hooks": cc["hooks"],
+            "statusline": cc["statusline"],
+            "legacy": cc["legacy"],
+            "commands": cc["commands"],
+            "path": settings_path(),
+        },
+        "antigravity": {
+            "detected": antigravity_detected(),
+            "hooks": ag["hooks"],
+            "commands": ag["commands"],
+            "path": antigravity_hooks_path(),
+        },
+    }
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="sqrm8_settings.py")
     ap.add_argument("action", choices=["install", "uninstall", "check"])
     ap.add_argument("--root")
     ap.add_argument("--python")
     ap.add_argument("--no-statusline", action="store_true")
+    ap.add_argument("--agent", choices=["claude", "antigravity", "auto", "all"], default="claude")
     a = ap.parse_args(argv)
     try:
         from .hostos import migrate_state_dir   # tools/install.sh runs us first: keep the old state dir's data
@@ -407,12 +632,20 @@ def main(argv=None):
         if not a.root or not a.python:
             ap.error("install needs --root and --python")
         try:
-            return install(os.path.abspath(a.root), a.python, not a.no_statusline)
+            res = install_agents(a.agent, not a.no_statusline, os.path.abspath(a.root), a.python)
+            return max(res.values()) if res else 0
         except (ValueError, OSError) as e:
-            print(f"error: cannot update {settings_path()}: {e}", file=sys.stderr)
+            print(f"error: cannot update hooks config: {e}", file=sys.stderr)
             return 2
     if a.action == "uninstall":
-        return uninstall()
+        res = uninstall_agents(a.agent)
+        return max(res.values()) if res else 0
+    if a.agent == "antigravity":
+        return antigravity_check()
+    if a.agent in ("auto", "all"):
+        targets = resolve_agents(a.agent)
+        rcs = [check() if t == "claude" else antigravity_check() for t in targets]
+        return 0 if all(r == 0 for r in rcs) else max(rcs)
     rc = check()
     if rc == 3:
         print("hooks: installed under the old Claudius Maximus names: needs reinstall (run install)")

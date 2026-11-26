@@ -520,9 +520,86 @@ def _focus_windows(sid: str, pid: int, tty: str, cwd: str) -> str:
     return f"session {sid}: no window found for the process tree ({' < '.join(names[:6])})"
 
 
-def focus_session(sid: str) -> str:
-    """Focus the terminal hosting session `sid`. Returns a short description of what happened."""
-    rec = find_session(sid)
+def _find_antigravity_pid(cwd: str) -> int | None:
+    """Best-effort lookup of a live `agy` CLI process whose working directory matches `cwd`."""
+    try:
+        import psutil
+    except ImportError:
+        return None
+    want = os.path.realpath(cwd) if cwd else ""
+    fallback = None
+    for p in psutil.process_iter(["pid", "name"]):
+        try:
+            name = _exe_name(p.info.get("name") or "")
+            if name != "agy":
+                continue
+            if fallback is None:
+                fallback = p.info["pid"]
+            if want:
+                pcwd = os.path.realpath(p.cwd())
+                if pcwd == want or pcwd.startswith(want + os.sep) or want.startswith(pcwd + os.sep):
+                    return int(p.info["pid"])
+        except Exception:
+            continue
+    return int(fallback) if fallback is not None else None
+
+
+def _focus_antigravity_gui(sid: str, cwd: str) -> str:
+    """Focus Antigravity 2.0 App / IDE window (best effort across OSes)."""
+    needle = (ntpath.basename((cwd or "").rstrip("/\\")) if IS_WINDOWS else os.path.basename((cwd or "").rstrip("/")))
+    if sys.platform == "darwin":
+        app = "/Applications/Antigravity.app"
+        ok = _raise_window_titled(app, needle) if needle else False
+        if not ok:
+            _activate("Antigravity")
+        return f"focused Antigravity for {sid}" + (" (exact)" if ok else "")
+    if IS_WINDOWS:
+        try:
+            u = _user32()
+            wins = _win_windows(u)
+            low = (needle or "antigravity").lower()
+            hits = [w for w in wins if low in w[2].lower()] or [w for w in wins if "antigravity" in w[2].lower()]
+            if hits:
+                _win_raise(u, hits[0][0])
+                return f"focused Antigravity for {sid}"
+        except Exception:
+            pass
+        return f"session {sid}: Antigravity window not found"
+    tool = _linux_window_tool()
+    if not tool:
+        return f"session {sid}: no window tool (install kdotool, xdotool or wmctrl)"
+    if tool == "kwin":
+        if _kwin_activate([], needle or "Antigravity"):
+            return f"focused Antigravity for {sid} (kwin)"
+        return f"session {sid}: KWin scripting call failed"
+    for term in (needle, "Antigravity"):
+        if not term:
+            continue
+        wids = _linux_windows_titled(tool, term)
+        if wids:
+            _linux_activate(tool, wids[0])
+            return f"focused Antigravity '{term}' for {sid} ({tool})"
+    return f"session {sid}: Antigravity window not found ({tool})"
+
+
+def focus_session(sid: str, info: dict | None = None) -> str:
+    """Focus the terminal or app hosting session `sid`. Returns a short description of what happened."""
+    rec = None
+    if isinstance(info, dict):
+        src = info.get("source") or "claude"
+        cwd = info.get("cwd") or ""
+        if src == "antigravity":
+            surface = info.get("surface") or "cli"
+            if surface in ("app", "ide"):
+                return _focus_antigravity_gui(sid, cwd)
+            pid = info.get("pid") or _find_antigravity_pid(cwd)
+            if not pid:
+                return _focus_antigravity_gui(sid, cwd)
+            rec = {"pid": pid, "cwd": cwd}
+        elif info.get("pid"):
+            rec = {"pid": info["pid"], "cwd": cwd}
+    if rec is None:
+        rec = find_session(sid)
     if not rec or not rec.get("pid"):
         return f"session {sid} not found"
     pid = int(rec["pid"])

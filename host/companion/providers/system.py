@@ -361,15 +361,28 @@ class SystemProvider(Provider):
         m["level"] = {1: "normal", 2: "warn", 4: "critical"}.get(pl or 1, "normal")
         return m
 
-    def _is_claude_node(self, pid: int) -> bool:
-        if pid not in self.node_is_claude:
-            try:
-                cmd = " ".join(psutil.Process(pid).cmdline())
-                self.node_is_claude[pid] = "claude" in cmd.lower() and ("claude-code" in cmd or "/claude" in cmd
-                                                                        or (IS_WINDOWS and "\\claude" in cmd))
-            except Exception:
-                self.node_is_claude[pid] = False
-        return self.node_is_claude[pid]
+    def _is_agent_proc(self, pid: int, base: str) -> bool:
+        """True for Claude Code, Antigravity (agy / language_server), and OpenCode root processes."""
+        # The Claude Code tests stay case-sensitive, as they were: "Claude" is the desktop app on macOS, and a
+        # node process under ".../Application Support/Claude/" is one of its MCP servers, not a session.
+        if base == "claude":
+            return True
+        low = base.lower()
+        if low in ("agy", "antigravity", "opencode"):
+            return True
+        if base == "node" or low.startswith("language_server"):
+            if pid not in self.node_is_claude:
+                try:
+                    cmd = " ".join(psutil.Process(pid).cmdline())
+                    if base == "node":
+                        self.node_is_claude[pid] = "claude" in cmd.lower() and (
+                            "claude-code" in cmd or "/claude" in cmd or (IS_WINDOWS and "\\claude" in cmd))
+                    else:
+                        self.node_is_claude[pid] = "antigravity" in cmd.lower()
+                except Exception:
+                    self.node_is_claude[pid] = False
+            return self.node_is_claude[pid]
+        return False
 
     @staticmethod
     def _proc_rows_windows() -> list[tuple[int, int, float, int, str]]:
@@ -414,7 +427,7 @@ class SystemProvider(Provider):
             base = comm.rsplit("/", 1)[-1]
             if IS_WINDOWS:
                 base = base.lower()
-            if base == "claude" or (base == "node" and self._is_claude_node(pid)):
+            if self._is_agent_proc(pid, base):
                 roots.append(pid)
         self.node_is_claude = {p: v for p, v in self.node_is_claude.items() if p in alive}
         root_set = set(roots)

@@ -91,8 +91,8 @@ if [ "$OS" = Linux ] && [ -e "$OLD_UDEV" ]; then
 fi
 
 if [ "$DO_HOOKS" = 1 ]; then
-  echo "==> Claude Code hooks + statusLine (~/.claude/settings.json)"
-  "$PY" "$ROOT/host/hooks/sqrm8_settings.py" install --root "$ROOT" --python "$PY" $SL_FLAG
+  echo "==> Agent hooks (Claude Code / Antigravity)"
+  "$PY" "$ROOT/host/hooks/sqrm8_settings.py" install --agent auto --root "$ROOT" --python "$PY" $SL_FLAG
 fi
 
 if [ "$DO_LAUNCHD" = 1 ] && [ "$OS" = Darwin ]; then

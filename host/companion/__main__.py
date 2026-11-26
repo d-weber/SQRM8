@@ -83,7 +83,7 @@ def cmd_status(as_json: bool) -> int:
     import json
     import time
     from .daemon import state_dir, status_path, ROOT
-    from .hooksetup import installed
+    from .hooksetup import installed, status_all
     from . import autostart
     from .hostos import installed_service_path, service_installed, service_name, service_path
     from .link import find_port
@@ -95,6 +95,7 @@ def cmd_status(as_json: bool) -> int:
         pass
     running = bool(st.get("pid")) and _pid_alive(st.get("pid")) and time.time() - st.get("updated", 0) < 30
     inst = installed()
+    agents_hooks = status_all()
     hooks_installed, statusline_installed = inst["hooks"], inst["statusline"]
     sl = {}
     try:
@@ -108,6 +109,7 @@ def cmd_status(as_json: bool) -> int:
         "daemon_running": running, "daemon": st, "device_port": find_port(),
         "hooks_installed": hooks_installed, "statusline_installed": statusline_installed,
         "hooks_need_reinstall": bool(inst.get("legacy")),
+        "agents_hooks": agents_hooks,
         "autostart": autostart.is_enabled(),
         "launch_agent": service_installed(), "service": service_name(),
         "service_path": installed_service_path() or service_path(),
@@ -142,12 +144,19 @@ def cmd_status(as_json: bool) -> int:
         h = st.get("hooks") or {}
         print(f"hooks          : installed={yes(hooks_installed)} listening={yes(h.get('listening'))} "
               f"received={h.get('received', 0)} last {_ago(h.get('last_at'))}")
+        ag = agents_hooks.get("antigravity") or {}
+        if ag.get("detected") or ag.get("hooks"):
+            print(f"antigravity    : hooks={yes(ag.get('hooks'))} ({ag.get('path')})")
         ss = st.get("sessions") or []
         print(f"sessions       : {len(ss)}")
         for s in ss[:12]:
-            print(f"   {s.get('id')}  {s.get('status') or '?':8} {s.get('name') or ''}")
+            src = f" [{s['source']}]" if s.get("source") and s.get("source") != "claude" else ""
+            print(f"   {s.get('id')}  {s.get('status') or '?':8} {s.get('name') or ''}{src}")
     else:
         print(f"hooks          : installed={yes(hooks_installed)}")
+        ag = agents_hooks.get("antigravity") or {}
+        if ag.get("detected") or ag.get("hooks"):
+            print(f"antigravity    : hooks={yes(ag.get('hooks'))} ({ag.get('path')})")
     if report["hooks_need_reinstall"]:
         print("hooks          : some still use the old name (Claudius Maximus): run `sqrm8 hooks install`")
     rl = sl.get("rate_limits") or {}
@@ -332,27 +341,38 @@ def cmd_autostart(action: str) -> int:
     return 0
 
 
-def cmd_hooks(action: str, statusline: bool) -> int:
+def cmd_hooks(action: str, statusline: bool, agent: str = "auto") -> int:
     from . import hooksetup
     try:
         if action == "install":
-            return hooksetup.install_for_app(statusline)
+            return hooksetup.exit_code(hooksetup.install_agents(agent, statusline), agent)
         if action == "uninstall":
-            return hooksetup.uninstall()
+            res = hooksetup.uninstall_agents(agent if agent != "auto" else "all")
+            return max(res.values()) if res else 0
     except (ValueError, OSError) as e:
-        print(f"error: cannot update {hooksetup.settings_path()}: {e}", file=sys.stderr)
+        print(f"error: cannot update hooks config: {e}", file=sys.stderr)
         return 2
-    rc = hooksetup.check()
-    inst = hooksetup.installed()
-    print(f"hooks: {'installed' if inst['hooks'] else 'not installed'}, "
-          f"statusLine wrapper: {'installed' if inst['statusline'] else 'not installed'} "
-          f"({hooksetup.settings_path()})")
-    for c in inst["commands"]:
-        print(f"  {c}")
-    if inst.get("legacy"):
-        print("needs reinstall: some entries still run the app under its old name (Claudius Maximus); "
-              "run `sqrm8 hooks install`")
-    return rc
+    targets = hooksetup.resolve_agents(agent)
+    rcs = {}
+    if "claude" in targets:
+        rcs["claude"] = hooksetup.check()
+        inst = hooksetup.installed()
+        print(f"hooks: {'installed' if inst['hooks'] else 'not installed'}, "
+              f"statusLine wrapper: {'installed' if inst['statusline'] else 'not installed'} "
+              f"({hooksetup.settings_path()})")
+        for c in inst["commands"]:
+            print(f"  {c}")
+        if inst.get("legacy"):
+            print("needs reinstall: some entries still run the app under its old name (Claudius Maximus); "
+                  "run `sqrm8 hooks install`")
+    if "antigravity" in targets:
+        rcs["antigravity"] = hooksetup.antigravity_check()
+        inst = hooksetup.antigravity_installed()
+        print(f"antigravity hooks: {'installed' if inst['hooks'] else 'not installed'} "
+              f"({hooksetup.antigravity_hooks_path()})")
+        for c in inst["commands"]:
+            print(f"  {c}")
+    return hooksetup.exit_code(rcs, agent)
 
 
 def build_parser():
@@ -381,7 +401,7 @@ def build_parser():
     p.add_argument("--board", choices=["4b", "sqrm8"])
     p.add_argument("--port")
     p.add_argument("--erase", action="store_true", help="erase the whole flash first")
-    sub.add_parser("hook", help="Claude Code hook relay (reads the hook JSON on stdin)")
+    sub.add_parser("hook", help="Agent hook relay (reads the hook JSON on stdin)")
     sub.add_parser("statusline", help="Claude Code statusLine wrapper")
     p = sub.add_parser("autostart", help="start the tray app at login")
     p.add_argument("action", choices=["enable", "disable", "status"], nargs="?", default="status")
@@ -390,8 +410,10 @@ def build_parser():
     p = sub.add_parser("update", help="check the GitHub Releases page for a newer app")
     p.add_argument("--install", action="store_true", help="download and install it")
     p.add_argument("auto", nargs="*", help="`auto on` / `auto off`: the daily check")
-    p = sub.add_parser("hooks", help="Claude Code hooks in ~/.claude/settings.json")
+    p = sub.add_parser("hooks", help="Agent hooks (Claude Code ~/.claude/settings.json, Antigravity ~/.gemini/config/hooks.json)")
     p.add_argument("action", choices=["install", "uninstall", "check"], nargs="?", default="check")
+    p.add_argument("--agent", choices=["auto", "all", "claude", "antigravity"], default="auto",
+                   help="which agent(s) to manage (default: auto-detect)")
     p.add_argument("--no-statusline", action="store_true")
     return ap
 
@@ -424,7 +446,7 @@ def main(argv=None) -> int:
         setup_logging(False, None)
         return cmd_autostart(a.action)
     if a.command == "hooks":
-        return cmd_hooks(a.action, not a.no_statusline)
+        return cmd_hooks(a.action, not a.no_statusline, a.agent)
     if a.command == "port":
         return cmd_port(a.name)
     if a.command == "update":

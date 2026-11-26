@@ -426,6 +426,11 @@ def build_menu(st: dict, app) -> list:
         items.append(MenuItem("Claude Code hooks: installed", enabled=False))
     else:
         items.append(MenuItem("Install Claude Code hooks", action=app.install_hooks))
+    if st.get("antigravity_detected") or st.get("antigravity_hooks_installed"):
+        if st.get("antigravity_hooks_installed"):
+            items.append(MenuItem("Antigravity hooks: installed", enabled=False))
+        else:
+            items.append(MenuItem("Install Antigravity hooks", action=app.install_antigravity_hooks))
     items.append(MenuItem("Open log", action=app.open_log))
     items.append(MenuItem("Open claude.ai usage", action=app.open_usage_page))
     items.append(MenuItem.sep())
@@ -584,6 +589,8 @@ class App:
         if now - self._slow_at > SLOW_REFRESH_S:
             self._slow_at = now
             self._slow = {"autostart": self.autostart(), "hooks_installed": self.hooks_installed(),
+                          "antigravity_detected": self.antigravity_detected(),
+                          "antigravity_hooks_installed": self.antigravity_hooks_installed(),
                           "update_check": self.update_check_enabled()}
         st.update(self._slow)
         st["flash"] = dict(self.flash_state)
@@ -647,6 +654,11 @@ class App:
             done.append("Claude Code hooks installed")
         else:
             done.append("Could not install the Claude Code hooks (see the log; the menu has Install)")
+        if self.antigravity_detected():
+            if self.install_antigravity_hooks(notify=False):
+                done.append("Antigravity hooks installed")
+            else:
+                done.append("Could not install the Antigravity hooks (see the log)")
         # Autostart is enabled once, even if the hooks failed and the first run is retried at the next start:
         # by then the user may have turned "Start at login" off on purpose.
         if settings_get("first_run_autostart_done", False):
@@ -671,15 +683,16 @@ class App:
         try:
             hs = load_sqrm8_settings()
             matches = getattr(hs, "installed_matches_self", None)
-            if matches is None or not hs.installed().get("hooks"):
-                return
-            if _quiet(matches):
-                return
+            if matches is not None and hs.installed().get("hooks") and not _quiet(matches):
+                log.info("the installed Claude Code hooks point to another program; reinstalling them for this one")
+                self.install_hooks(notify=False)
+            ag_matches = getattr(hs, "antigravity_installed_matches_self", None)
+            ag_inst = getattr(hs, "antigravity_installed", None)
+            if ag_matches is not None and ag_inst is not None and ag_inst().get("hooks") and not _quiet(ag_matches):
+                log.info("the installed Antigravity hooks point to another program; reinstalling them for this one")
+                self.install_antigravity_hooks(notify=False)
         except Exception as e:
             _warn_once("hooks-stale", f"checking the installed hook command failed: {e}")
-            return
-        log.info("the installed Claude Code hooks point to another program; reinstalling them for this one")
-        self.install_hooks(notify=False)
 
     def _migrate_legacy_autostart(self):
         """After an upgrade from 0.7.x (Claudius Maximus) the start-at-login entry still has the old name and
@@ -718,6 +731,40 @@ class App:
         except Exception as e:
             _warn_once("hooks-check", f"sqrm8_settings.check failed: {e}")
             return False
+
+    def antigravity_detected(self) -> bool:
+        try:
+            hs = load_sqrm8_settings()
+            fn = getattr(hs, "antigravity_detected", None)
+            return bool(fn()) if fn else False
+        except Exception:
+            return False
+
+    def antigravity_hooks_installed(self) -> bool:
+        try:
+            hs = load_sqrm8_settings()
+            fn = getattr(hs, "antigravity_check", None)
+            return _quiet(fn) == 0 if fn else False
+        except Exception as e:
+            _warn_once("agy-hooks-check", f"antigravity_check failed: {e}")
+            return False
+
+    def install_antigravity_hooks(self, notify: bool = True) -> bool:
+        try:
+            hs = load_sqrm8_settings()
+            fn = getattr(hs, "install_antigravity_for_app", None)
+            if fn is None:
+                raise AttributeError("hooksetup.install_antigravity_for_app missing")
+            rc = _quiet(fn)
+            ok = rc in (0, None, True)
+        except Exception as e:
+            log.warning("installing the Antigravity hooks failed: %s", e)
+            ok = False
+        self._slow_at = 0
+        if notify:
+            self.notify("Antigravity hooks", "Installed: new Antigravity sessions report to the device."
+                        if ok else "Could not install the Antigravity hooks; see the log.")
+        return ok
 
     def autostart(self) -> bool:
         try:
